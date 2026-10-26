@@ -129,8 +129,20 @@ const FALLBACK_BOOKINGS = {
 
 export async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
+
+  // Auto-inject stored JWT token if present and not explicitly provided in options.headers
+  let storedToken = null;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    storedToken = localStorage.getItem('agrislot_token') || localStorage.getItem('token');
+  }
+
+  const authHeader = (options.headers && options.headers.Authorization)
+    ? {}
+    : (storedToken ? { Authorization: `Bearer ${storedToken}` } : {});
+
   const headers = {
     'Content-Type': 'application/json',
+    ...authHeader,
     ...(options.headers || {}),
   };
 
@@ -192,7 +204,11 @@ export const AgriSlotAPI = {
     }),
   getFarmers: () => apiRequest('/farmers'),
   getFarmerById: (id) => apiRequest(`/farmers/${id}`),
-  getFarmerBookings: (id) => apiRequest(`/farmers/${id}/bookings`),
+  getFarmerBookings: (id, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/farmers/${id}/bookings`, { headers });
+  },
 
   // Slots
   getSlots: (params) => {
@@ -205,16 +221,23 @@ export const AgriSlotAPI = {
   getSlotUtilization: () => apiRequest('/slots/utilization'),
 
   // Bookings
-  createBooking: (data) =>
-    apiRequest('/bookings', {
+  createBooking: (data, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest('/bookings', {
       method: 'POST',
+      headers,
       body: JSON.stringify(data),
-    }),
+    });
+  },
   getBookingByToken: (token) =>
     apiRequest(`/bookings/token/${encodeURIComponent((token || '').trim())}`),
   getBookingById: (id) => apiRequest(`/bookings/${id}`),
-  cancelBooking: (id) =>
-    apiRequest(`/bookings/${id}/cancel`, { method: 'PATCH' }),
+  cancelBooking: (id, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/bookings/${id}/cancel`, { method: 'PATCH', headers });
+  },
 
   // Auth & Admin
   login: (credentials) =>
@@ -251,6 +274,12 @@ export const AgriSlotAPI = {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ role })
+    }),
+  assignUserRole: ({ email, username, userId, role }, token) =>
+    apiRequest('/admin/users/assign-role', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ email, username, userId, role })
     }),
   getAdminBookings: (token, filters = {}) => {
     const q = new URLSearchParams();

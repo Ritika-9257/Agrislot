@@ -4,6 +4,7 @@ const BookingService = require('../services/booking.service');
 const TransactionService = require('../services/transaction.service');
 const FarmerService = require('../services/farmer.service');
 const SlotService = require('../services/slot.service');
+const UserRepository = require('../repositories/user.repository');
 const { toCsv } = require('../utils/csvFormatter');
 const { successResponse } = require('../utils/apiResponse');
 const { AppError } = require('../middleware/errorHandler');
@@ -80,6 +81,46 @@ const AdminController = {
         actorUserId: req.user.userId,
         actorUsername: req.user.username,
         targetUserId: req.params.id,
+        newRole: role
+      });
+
+      return successResponse(res, {
+        message: `User role successfully updated to ${role}`,
+        data: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async assignUserRole(req, res, next) {
+    try {
+      const { email, username, userId, role } = req.body;
+      if (!role) {
+        throw new AppError("Role is required: { role: 'Admin' | 'Farmer' | 'Mandi_Officer' }", 400, 'ROLE_REQUIRED');
+      }
+
+      let targetId = userId;
+      if (!targetId && (email || username)) {
+        const identifier = (email || username).trim();
+        let target = await UserRepository.findByEmail(identifier);
+        if (!target) {
+          target = await UserRepository.findByUsername(identifier);
+        }
+        if (!target) {
+          throw new AppError(`No user found with email or username '${identifier}'. Please ensure they register first.`, 404, 'USER_NOT_FOUND');
+        }
+        targetId = target.User_ID;
+      }
+
+      if (!targetId) {
+        throw new AppError('Either userId, email, or username is required', 400, 'TARGET_REQUIRED');
+      }
+
+      const updated = await AdminService.updateUserRole({
+        actorUserId: req.user.userId,
+        actorUsername: req.user.username,
+        targetUserId: targetId,
         newRole: role
       });
 

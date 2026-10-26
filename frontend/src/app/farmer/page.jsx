@@ -9,989 +9,954 @@ import {
   Wheat, 
   User, 
   Phone, 
-  PlusCircle, 
   CheckCircle2, 
   AlertCircle, 
   Search, 
-  Trash2, 
   QrCode,
   ArrowRight,
-  Filter,
   RefreshCw,
-  Scale,
-  MessageSquare
+  Printer,
+  Coffee,
+  Check,
+  Tractor,
+  Layers,
+  Sparkles,
+  Lock,
+  CalendarDays
 } from 'lucide-react';
 import { AgriSlotAPI } from '@/lib/api';
 import GatePassModal from '@/components/GatePassModal';
-import SmsNotificationModal from '@/components/SmsNotificationModal';
 import { useAuth } from '@/context/AuthContext';
 
+// Standardized 20-minute operational time slots across APMC operating hours (9:00 AM - 5:00 PM)
+const TIME_SLOTS_CONFIG = [
+  // Morning Session (09:00 AM - 01:00 PM)
+  { id: 'S01', startTime: '09:00:00', endTime: '09:20:00', label: '09:00 AM - 09:20 AM', session: 'morning' },
+  { id: 'S02', startTime: '09:20:00', endTime: '09:40:00', label: '09:20 AM - 09:40 AM', session: 'morning' },
+  { id: 'S03', startTime: '09:40:00', endTime: '10:00:00', label: '09:40 AM - 10:00 AM', session: 'morning' },
+  { id: 'S04', startTime: '10:00:00', endTime: '10:20:00', label: '10:00 AM - 10:20 AM', session: 'morning' },
+  { id: 'S05', startTime: '10:20:00', endTime: '10:40:00', label: '10:20 AM - 10:40 AM', session: 'morning' },
+  { id: 'S06', startTime: '10:40:00', endTime: '11:00:00', label: '10:40 AM - 11:00 AM', session: 'morning' },
+  { id: 'S07', startTime: '11:00:00', endTime: '11:20:00', label: '11:00 AM - 11:20 AM', session: 'morning' },
+  { id: 'S08', startTime: '11:20:00', endTime: '11:40:00', label: '11:20 AM - 11:40 AM', session: 'morning' },
+  { id: 'S09', startTime: '11:40:00', endTime: '12:00:00', label: '11:40 AM - 12:00 PM', session: 'morning' },
+  { id: 'S10', startTime: '12:00:00', endTime: '12:20:00', label: '12:00 PM - 12:20 PM', session: 'morning' },
+  { id: 'S11', startTime: '12:20:00', endTime: '12:40:00', label: '12:20 PM - 12:40 PM', session: 'morning' },
+  { id: 'S12', startTime: '12:40:00', endTime: '13:00:00', label: '12:40 PM - 01:00 PM', session: 'morning' },
+
+  // Afternoon Session (Resumes after 01:00 PM - 02:00 PM Lunch Break)
+  { id: 'S13', startTime: '14:00:00', endTime: '14:20:00', label: '02:00 PM - 02:20 PM', session: 'afternoon' },
+  { id: 'S14', startTime: '14:20:00', endTime: '14:40:00', label: '02:20 PM - 02:40 PM', session: 'afternoon' },
+  { id: 'S15', startTime: '14:40:00', endTime: '15:00:00', label: '02:40 PM - 03:00 PM', session: 'afternoon' },
+  { id: 'S16', startTime: '15:00:00', endTime: '15:20:00', label: '03:00 PM - 03:20 PM', session: 'afternoon' },
+  { id: 'S17', startTime: '15:20:00', endTime: '15:40:00', label: '03:20 PM - 03:40 PM', session: 'afternoon' },
+  { id: 'S18', startTime: '15:40:00', endTime: '16:00:00', label: '03:40 PM - 04:00 PM', session: 'afternoon' },
+  { id: 'S19', startTime: '16:00:00', endTime: '16:20:00', label: '04:00 PM - 04:20 PM', session: 'afternoon' },
+  { id: 'S20', startTime: '16:20:00', endTime: '16:40:00', label: '04:20 PM - 04:40 PM', session: 'afternoon' },
+  { id: 'S21', startTime: '16:40:00', endTime: '17:00:00', label: '04:40 PM - 05:00 PM', session: 'afternoon' },
+];
+
 function FarmerPortalContent() {
-  const { user, openLogin, openSignup } = useAuth();
+  const { user, openLogin } = useAuth();
   const searchParams = useSearchParams();
-  const urlMandiId = searchParams.get('mandiId');
-  const [activeTab, setActiveTab] = useState('book');
+  const initialTab = searchParams.get('tab') || 'book';
+  const [activeTab, setActiveTab] = useState(initialTab); // 'book' | 'history'
 
   // Master Data
   const [mandis, setMandis] = useState([]);
   const [produceList, setProduceList] = useState([]);
-  const [farmers, setFarmers] = useState([]);
 
-  // Booking Form State
-  const [selectedFarmerId, setSelectedFarmerId] = useState('');
+  // Form State
   const [selectedMandiId, setSelectedMandiId] = useState('');
-  const [slots, setSlots] = useState([]);
-  const [selectedSlotId, setSelectedSlotId] = useState('');
   const [selectedProduceId, setSelectedProduceId] = useState('');
-  const [estimatedWeight, setEstimatedWeight] = useState('');
+  const [quantityTons, setQuantityTons] = useState(5);
 
-  // New Farmer Registration Modal State
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [newFarmer, setNewFarmer] = useState({
-    Full_Name: '',
-    Phone_Number: '',
-    Aadhaar_Number: '',
-    UPI_ID: '',
-    Village: '',
-    District: '',
-    State: 'Gujarat',
-  });
+  // Booking Date Selection
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [bookingDate, setBookingDate] = useState(todayStr);
 
-  // Generated Gate-Pass Modal & SMS Notification Modal State
-  const [activePassBooking, setActivePassBooking] = useState(null);
-  const [smsModalBooking, setSmsModalBooking] = useState(null);
-
-  // History / Lookup Tab State
-  const [historySearchQuery, setHistorySearchQuery] = useState('');
-  const [farmerBookings, setFarmerBookings] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  // UI States
-  const [loading, setLoading] = useState(false);
+  // Live Slots from MySQL for (Mandi_ID, Slot_Date)
+  const [dbSlots, setDbSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [selectedSlotId, setSelectedSlotId] = useState(null); // Real MySQL Slot_ID
 
-  // Initial Load
+  // Submission & Feedback
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successBooking, setSuccessBooking] = useState(null);
+  const [showGatePassModal, setShowGatePassModal] = useState(false);
+
+  // My Bookings Tab State
+  const [myBookings, setMyBookings] = useState([]);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [cancelModal, setCancelModal] = useState({ open: false, booking: null });
+
+  // Initial Load of Mandis and Produce
   useEffect(() => {
-    async function loadInitialData() {
+    async function loadMasterData() {
       try {
-        setLoading(true);
-        const [mandisRes, produceRes, farmersRes] = await Promise.allSettled([
+        const [mRes, pRes] = await Promise.allSettled([
           AgriSlotAPI.getMandis(),
           AgriSlotAPI.getProduce(),
-          AgriSlotAPI.getFarmers(),
         ]);
 
-        if (mandisRes.status === 'fulfilled' && mandisRes.value?.data) {
-          setMandis(mandisRes.value.data);
-          if (urlMandiId && mandisRes.value.data.some((m) => m.Mandi_ID === Number(urlMandiId))) {
-            setSelectedMandiId(Number(urlMandiId));
-          } else if (mandisRes.value.data.length > 0) {
-            setSelectedMandiId(mandisRes.value.data[0].Mandi_ID);
-          }
+        if (mRes.status === 'fulfilled' && mRes.value?.data && mRes.value.data.length > 0) {
+          setMandis(mRes.value.data);
+          setSelectedMandiId(mRes.value.data[0].Mandi_ID);
         }
-        if (produceRes.status === 'fulfilled' && produceRes.value?.data) {
-          setProduceList(produceRes.value.data);
-          if (produceRes.value.data.length > 0) {
-            setSelectedProduceId(produceRes.value.data[0].Produce_ID);
-          }
-        }
-        if (farmersRes.status === 'fulfilled' && farmersRes.value?.data) {
-          setFarmers(farmersRes.value.data);
-          if (farmersRes.value.data.length > 0) {
-            setSelectedFarmerId(farmersRes.value.data[0].Farmer_ID);
-          }
+        if (pRes.status === 'fulfilled' && pRes.value?.data && pRes.value.data.length > 0) {
+          setProduceList(pRes.value.data);
+          setSelectedProduceId(pRes.value.data[0].Produce_ID);
         }
       } catch (err) {
-        setErrorMessage(err.message || 'Failed to load master data');
-      } finally {
-        setLoading(false);
+        console.warn('Initial data load error:', err);
       }
     }
-    loadInitialData();
-  }, [urlMandiId]);
+    loadMasterData();
+    loadFarmerBookings();
+  }, []);
 
-  // When Mandi Changes, Load Slots
+  // Fetch Slots whenever selected Mandi or Booking Date changes
   useEffect(() => {
-    if (!selectedMandiId) {
-      setSlots([]);
-      return;
-    }
+    if (!selectedMandiId || !bookingDate) return;
 
     async function loadSlots() {
+      setLoadingSlots(true);
       try {
-        setLoadingSlots(true);
-        const res = await AgriSlotAPI.getMandiSlots(Number(selectedMandiId));
-        if (res.data) {
-          setSlots(res.data);
-          const firstAvailable = res.data.find((s) => s.Remaining_Capacity_Tons > 0);
+        const res = await AgriSlotAPI.getSlots({
+          mandiId: selectedMandiId,
+          date: bookingDate
+        });
+        if (res?.data && Array.isArray(res.data)) {
+          setDbSlots(res.data);
+          // Auto-select first available slot if nothing is selected or current selection is full
+          const firstAvailable = res.data.find(s => Number(s.Remaining_Capacity_Tons) > 0);
           if (firstAvailable) {
             setSelectedSlotId(firstAvailable.Slot_ID);
           } else if (res.data.length > 0) {
             setSelectedSlotId(res.data[0].Slot_ID);
-          } else {
-            setSelectedSlotId('');
           }
         }
       } catch (err) {
-        console.warn('Slot load error:', err.message);
+        console.warn('Failed to load slots from database:', err);
       } finally {
         setLoadingSlots(false);
       }
     }
 
     loadSlots();
-  }, [selectedMandiId]);
+  }, [selectedMandiId, bookingDate]);
 
-  // Handle Booking Creation
-  const handleCreateBooking = async (e) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    if (!selectedFarmerId) {
-      setErrorMessage('Please select or register a farmer');
+  // Load Farmer's Personal Bookings
+  const loadFarmerBookings = async () => {
+    const token = (user && user.token) || (typeof window !== 'undefined' ? localStorage.getItem('agrislot_token') : '');
+    if (!token && !user) {
+      setMyBookings([]);
       return;
     }
-    if (!selectedSlotId) {
-      setErrorMessage('Please select an available slot window');
-      return;
-    }
-    if (!selectedProduceId) {
-      setErrorMessage('Please select a produce item');
-      return;
-    }
-    if (!estimatedWeight || Number(estimatedWeight) <= 0) {
-      setErrorMessage('Please enter a valid estimated weight in tons');
-      return;
-    }
-
-    // Check capacity locally
-    const slotObj = slots.find((s) => s.Slot_ID === Number(selectedSlotId));
-    if (slotObj && Number(estimatedWeight) > slotObj.Remaining_Capacity_Tons) {
-      setErrorMessage(
-        `Weight exceeds slot capacity. Remaining: ${slotObj.Remaining_Capacity_Tons} Tons.`
-      );
-      return;
-    }
-
+    setLoadingHistory(true);
     try {
-      setLoading(true);
-      const res = await AgriSlotAPI.createBooking({
-        Farmer_ID: Number(selectedFarmerId),
-        Slot_ID: Number(selectedSlotId),
-        Produce_ID: Number(selectedProduceId),
-        Estimated_Weight_Tons: Number(estimatedWeight),
-      });
-
-      if (res.data) {
-        setSuccessMessage('Slot booked successfully! Gate-pass slip generated.');
-        setActivePassBooking(res.data);
-        if (selectedMandiId) {
-          const updatedSlots = await AgriSlotAPI.getMandiSlots(Number(selectedMandiId));
-          setSlots(updatedSlots.data || []);
+      const res = await AgriSlotAPI.getAdminBookings(token || '', { limit: 50 }).catch(() => null);
+      if (res?.data && Array.isArray(res.data)) {
+        if (user?.farmerId) {
+          const userBookings = res.data.filter(b => b.Farmer_ID === user.farmerId);
+          setMyBookings(userBookings);
+        } else {
+          setMyBookings(res.data);
         }
       }
-    } catch (err) {
-      setErrorMessage(err.message || 'Booking submission failed');
+    } catch {
+      // Fallback
     } finally {
-      setLoading(false);
+      setLoadingHistory(false);
     }
   };
 
-  // Handle New Farmer Registration
-  const handleRegisterFarmer = async (e) => {
-    e.preventDefault();
-    try {
-      setLoading(true);
-      const res = await AgriSlotAPI.registerFarmer(newFarmer);
-      if (res.data) {
-        const createdFarmer = res.data;
-        setFarmers((prev) => [createdFarmer, ...prev]);
-        setSelectedFarmerId(createdFarmer.Farmer_ID);
-        setShowRegisterModal(false);
-        setSuccessMessage(`Producer ${newFarmer.Full_Name} registered successfully!`);
-        setNewFarmer({
-          Full_Name: '',
-          Phone_Number: '',
-          Aadhaar_Number: '',
-          UPI_ID: '',
-          Village: '',
-          District: '',
-          State: 'Gujarat',
-        });
-      }
-    } catch (err) {
-      setErrorMessage(err.message || 'Farmer registration failed');
-    } finally {
-      setLoading(false);
+  // Re-fetch bookings when user session changes
+  useEffect(() => {
+    if (user) {
+      loadFarmerBookings();
     }
+  }, [user?.userId, user?.farmerId]);
+
+  // Quick Date Select Helper
+  const setQuickDate = (offsetDays) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    const dateStr = d.toISOString().split('T')[0];
+    setBookingDate(dateStr);
   };
 
-  // Handle Booking Cancellation
-  const handleCancelBooking = async (bookingId) => {
-    if (!confirm('Are you sure you want to cancel this booking? Slot capacity will be restored immediately.')) {
-      return;
-    }
+  // Handle Booking Cancellation (Capacity restoration in MySQL)
+  const handleExecuteCancel = async () => {
+    if (!cancelModal.booking) return;
+    const bId = cancelModal.booking.Booking_ID;
     try {
-      setLoading(true);
-      await AgriSlotAPI.cancelBooking(bookingId);
-      setSuccessMessage(`Booking #${bookingId} has been cancelled and slot capacity restored.`);
-      if (selectedFarmerId) {
-        const res = await AgriSlotAPI.getFarmerBookings(Number(selectedFarmerId));
-        setFarmerBookings(res.data || []);
-      }
-      if (selectedMandiId) {
-        const updatedSlots = await AgriSlotAPI.getMandiSlots(Number(selectedMandiId));
-        setSlots(updatedSlots.data || []);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('agrislot_token') : '';
+      await AgriSlotAPI.cancelBooking(bId, token);
+      setMyBookings(prev =>
+        prev.map(b => (b.Booking_ID === bId ? { ...b, Booking_Status: 'Cancelled' } : b))
+      );
+      setCancelModal({ open: false, booking: null });
+      if (selectedMandiId && bookingDate) {
+        const res = await AgriSlotAPI.getSlots({ mandiId: selectedMandiId, date: bookingDate });
+        if (res?.data) setDbSlots(res.data);
       }
     } catch (err) {
       setErrorMessage(err.message || 'Failed to cancel booking');
-    } finally {
-      setLoading(false);
     }
   };
 
-  // Search History by Farmer ID or Token
-  const handleSearchHistory = async () => {
-    if (!historySearchQuery.trim()) {
-      if (selectedFarmerId) {
-        loadFarmerHistory(Number(selectedFarmerId));
-      }
+  // Handle Booking Submission
+  const handleBookSlot = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+
+    if (!user) {
+      setErrorMessage('Farmer account required: Please sign in to verify your identity and confirm your arrival slot.');
+      openLogin();
       return;
     }
 
+    if (!selectedSlotId) {
+      setErrorMessage('Please click and select an available GREEN time slot from the chart.');
+      return;
+    }
+
+    const chosenSlot = dbSlots.find(s => s.Slot_ID === selectedSlotId);
+    if (chosenSlot && Number(chosenSlot.Remaining_Capacity_Tons) <= 0) {
+      setErrorMessage('This time slot is fully booked (RED). Please choose an available GREEN slot.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      setLoadingHistory(true);
-      setErrorMessage('');
-      if (historySearchQuery.trim().toUpperCase().startsWith('AG-T')) {
-        const res = await AgriSlotAPI.getBookingByToken(historySearchQuery.trim());
-        if (res.data) {
-          setFarmerBookings([res.data]);
-        }
-      } else {
-        const fId = parseInt(historySearchQuery.trim(), 10);
-        if (!isNaN(fId)) {
-          const res = await AgriSlotAPI.getFarmerBookings(fId);
-          setFarmerBookings(res.data || []);
-        } else {
-          setErrorMessage('Please enter a valid Token (AG-T...) or numeric Farmer ID');
-        }
+      const token = (user && user.token) || (typeof window !== 'undefined' ? localStorage.getItem('agrislot_token') : '');
+
+      if (!token) {
+        setErrorMessage('Authentication session expired. Please sign in again.');
+        openLogin();
+        setSubmitting(false);
+        return;
+      }
+
+      const payload = {
+        Slot_ID: selectedSlotId,
+        Produce_ID: Number(selectedProduceId) || 1,
+        Estimated_Weight_Tons: Number(quantityTons) || 5
+      };
+
+      const res = await AgriSlotAPI.createBooking(payload, token);
+
+      if (res?.data) {
+        const created = res.data;
+        const finalizedPass = {
+          Booking_ID: created.bookingId || created.Booking_ID,
+          Token_Number: created.tokenNumber || created.Token_Number,
+          Gate_Pass_Token: created.tokenNumber || created.Token_Number,
+          Farmer_Name: created.farmerName || user?.name || user?.username || 'Verified Farmer',
+          Farmer_Phone: user?.phone || user?.email || 'N/A',
+          Mandi_Name: created.mandiName || mandis.find(m => m.Mandi_ID === Number(selectedMandiId))?.Mandi_Name || 'APMC Mandi',
+          Produce_Name: created.produceName || produceList.find(p => p.Produce_ID === Number(selectedProduceId))?.Produce_Name || 'Wheat',
+          Estimated_Weight_Tons: Number(quantityTons),
+          Slot_Date: created.slotDate || bookingDate,
+          Start_Time: created.startTime || chosenSlot?.Start_Time || '09:00:00',
+          End_Time: created.endTime || chosenSlot?.End_Time || '09:20:00',
+          Booking_Status: 'Confirmed'
+        };
+
+        setMyBookings(prev => [finalizedPass, ...prev]);
+        setSuccessBooking(finalizedPass);
+        setShowGatePassModal(true);
+
+        const updatedSlots = await AgriSlotAPI.getSlots({ mandiId: selectedMandiId, date: bookingDate });
+        if (updatedSlots?.data) setDbSlots(updatedSlots.data);
       }
     } catch (err) {
-      setErrorMessage(err.message || 'No matching bookings found');
-      setFarmerBookings([]);
+      setErrorMessage(err.message || 'Failed to complete booking. Please try again.');
     } finally {
-      setLoadingHistory(false);
+      setSubmitting(false);
     }
   };
 
-  const loadFarmerHistory = async (farmerId) => {
-    try {
-      setLoadingHistory(true);
-      const res = await AgriSlotAPI.getFarmerBookings(farmerId);
-      setFarmerBookings(res.data || []);
-    } catch (err) {
-      console.warn('History load error:', err.message);
-      setFarmerBookings([]);
-    } finally {
-      setLoadingHistory(false);
-    }
+  const morningConfigs = TIME_SLOTS_CONFIG.filter(s => s.session === 'morning');
+  const afternoonConfigs = TIME_SLOTS_CONFIG.filter(s => s.session === 'afternoon');
+
+  const getDbSlotForConfig = (cfg) => {
+    return dbSlots.find(s => s.Start_Time === cfg.startTime);
   };
 
-  useEffect(() => {
-    if (activeTab === 'history' && selectedFarmerId) {
-      loadFarmerHistory(Number(selectedFarmerId));
-    }
-  }, [activeTab, selectedFarmerId]);
-
-  const selectedSlot = slots.find((s) => s.Slot_ID === Number(selectedSlotId));
+  const selectedSlotRecord = dbSlots.find(s => s.Slot_ID === selectedSlotId);
+  const selectedConfig = TIME_SLOTS_CONFIG.find(c => c.startTime === selectedSlotRecord?.Start_Time);
 
   return (
-    <div className="space-y-8">
-      {/* Top Page Header Pill */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b-[2.5px] border-navy-border">
+    <div className="space-y-6 max-w-6xl mx-auto pb-16">
+      
+      {/* Farmer Header Banner */}
+      <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-mint-foam border-[1.5px] border-navy-border text-xs font-mono font-bold text-forest mb-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
-            <span>APMC LOT DISPATCH PORTAL</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 border border-emerald-600 text-emerald-800 text-xs font-bold uppercase tracking-wider mb-2">
+            <Tractor className="w-3.5 h-3.5" /> Farmer Portal — Mandi Slot Allocation
           </div>
-          <h1 className="text-3xl font-display font-black text-navy-border tracking-tight">
-            Farmer Slot Reservation
+          <h1 className="text-2xl sm:text-3xl font-display font-black text-navy-border">
+            Book Arrival Time Slot
           </h1>
-          <p className="text-xs sm:text-sm text-slate-600 font-medium mt-1">
-            Reserve guaranteed Mandi arrival windows with concurrency-safe gate token allocation.
+          <p className="text-sm text-gray-600 mt-1">
+            Pick your arrival date, select an available <span className="font-bold text-emerald-700">GREEN</span> slot from the 20-minute chart, and get your Gate Pass Token.
           </p>
         </div>
 
-        {/* Tab switchers */}
-        <div className="flex items-center gap-1.5 bg-mint-foam p-1.5 rounded-2xl border-[2px] border-navy-border shadow-bento-sm self-start sm:self-auto">
+        {/* Tab Switcher */}
+        <div className="flex items-center bg-gray-100 p-1.5 rounded-xl border-[1.5px] border-navy-border shadow-sm">
           <button
             onClick={() => setActiveTab('book')}
-            className={`px-4 py-2 rounded-xl text-xs font-display font-black uppercase tracking-wider transition-all ${
+            className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
               activeTab === 'book'
-                ? 'bg-forest text-white shadow-bento-sm'
-                : 'text-navy-border hover:bg-white'
+                ? 'bg-forest text-white shadow-sm'
+                : 'text-gray-700 hover:text-navy-border'
             }`}
           >
-            Reserve Slot
+            🌾 Book New Slot
           </button>
           <button
-            onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-xl text-xs font-display font-black uppercase tracking-wider transition-all ${
+            onClick={() => {
+              setActiveTab('history');
+              loadFarmerBookings();
+            }}
+            className={`px-4 py-2 rounded-lg font-bold text-xs transition-all ${
               activeTab === 'history'
-                ? 'bg-forest text-white shadow-bento-sm'
-                : 'text-navy-border hover:bg-white'
+                ? 'bg-forest text-white shadow-sm'
+                : 'text-gray-700 hover:text-navy-border'
             }`}
           >
-            My Passes
+            📋 My Bookings ({myBookings.length})
           </button>
         </div>
       </div>
 
-      {/* Notifications */}
-      {user && (
-        <div className="p-3.5 px-4 rounded-2xl bg-white border-[2px] border-navy-border shadow-bento-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+      {/* ONE FARMER IDENTITY CARD (MANDATORY REQUIREMENT) */}
+      {user ? (
+        <div className="bg-emerald-50 border-[2px] border-emerald-600 rounded-bento p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-forest text-saffron flex items-center justify-center font-bold text-xs border border-navy-border shrink-0 shadow-sm">
-              {user.name ? user.name.slice(0, 2).toUpperCase() : 'AG'}
+            <div className="w-10 h-10 rounded-xl bg-forest text-saffron flex items-center justify-center font-bold border border-navy-border shadow-sm">
+              <User className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs font-bold text-navy-border flex items-center gap-2">
-                <span>Signed In: <strong>{user.name}</strong></span>
-                {user.provider === 'google' && (
-                  <span className="px-1.5 py-0.2 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[9.5px] font-mono font-bold flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                    Google Verified
-                  </span>
-                )}
+              <div className="text-[11px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                <Lock className="w-3 h-3 text-emerald-700" /> Verified Registered Farmer Identity (Read-Only)
               </div>
-              <div className="text-[11px] font-mono text-slate-500">
-                {user.email || user.phone || 'Authorized APMC Producer'} • {user.village ? `${user.village}, ${user.district || 'Surat'}` : 'Surat District'}
+              <div className="text-sm font-extrabold text-navy-border">
+                {user.name || user.username}
+                <span className="text-xs font-semibold text-gray-600 ml-2">
+                  • Account: {user.email || user.username} • Farmer ID #{user.farmerId || 'Linked'}
+                </span>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-[11px] font-mono font-bold text-forest bg-mint-foam px-2.5 py-1 rounded-lg border border-navy-border">
-              Fast Clearance Active
-            </span>
+          <span className="px-2.5 py-1 rounded-md bg-white text-emerald-800 font-mono text-[11px] font-bold border border-emerald-300">
+            ✓ 1:1 Identity Bound
+          </span>
+        </div>
+      ) : (
+        <div className="bg-amber-50 border-[2px] border-amber-500 rounded-bento p-4 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold border border-navy-border shadow-sm">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-700" /> Guest Mode — Not Logged In
+              </div>
+              <div className="text-sm font-extrabold text-navy-border">
+                Please sign in to link your registered farmer profile and book arrival slots.
+              </div>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={openLogin}
+            className="px-4 py-2 rounded-lg bg-forest text-saffron font-bold text-xs border border-navy-border shadow-sm hover:bg-forest-light transition-all flex items-center gap-2"
+          >
+            <User className="w-4 h-4" />
+            Sign In with Farmer Account
+          </button>
         </div>
       )}
 
       {errorMessage && (
-        <div className="p-4 rounded-2xl bg-coral/60 border-[2px] border-navy-border text-coral-dark text-xs font-mono font-bold flex items-center justify-between shadow-bento-sm">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-          <button onClick={() => setErrorMessage('')} className="font-bold text-sm">
-            &times;
-          </button>
+        <div className="bg-rose-50 border-2 border-rose-500 rounded-xl p-4 text-rose-800 text-sm font-semibold flex items-center gap-3 shadow-sm">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-600" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
-      {successMessage && (
-        <div className="p-4 rounded-2xl bg-mint-light border-[2px] border-navy-border text-forest text-xs font-mono font-bold flex items-center justify-between shadow-bento-sm">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-            <span>{successMessage}</span>
-          </div>
-          <button onClick={() => setSuccessMessage('')} className="font-bold text-sm">
-            &times;
-          </button>
-        </div>
-      )}
-
-      {/* TAB 1: BOOK A SLOT */}
+      {/* ========================================================================= */}
+      {/* TAB 1: BOOK NEW SLOT INTERFACE                                            */}
+      {/* ========================================================================= */}
       {activeTab === 'book' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Main Booking Form (7 Cols) */}
-          <div className="lg:col-span-7 space-y-6">
-            <form onSubmit={handleCreateBooking} className="space-y-6">
-              {/* Step 1: Farmer Selection */}
-              <div className="bg-white p-6 rounded-bento border-[2.5px] border-navy-border shadow-bento space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100">
-                  <div className="flex items-center gap-2 text-navy-border font-display font-extrabold text-sm uppercase">
-                    <User className="w-4 h-4 text-forest" />
-                    <span>Step 1: Producer Identification</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!user && (
-                      <button
-                        type="button"
-                        onClick={openLogin}
-                        className="px-3 py-1 bg-saffron hover:bg-saffron-dark text-navy-border border border-navy-border rounded-xl font-mono text-xs font-bold shadow-bento-sm active:translate-y-0.5 transition-all"
-                      >
-                        Sign In / Google
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowRegisterModal(true)}
-                      className="px-3 py-1 bg-mint-foam hover:bg-mint-light text-forest border border-navy-border rounded-xl font-mono text-xs font-bold shadow-bento-sm active:translate-y-0.5 transition-all flex items-center gap-1"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>New Producer</span>
-                    </button>
-                  </div>
-                </div>
+        <form onSubmit={handleBookSlot} className="space-y-6">
+          
+          {/* STEP 1 & 2 CONTROLS: Mandi, Produce & DATE SELECTION */}
+          <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento space-y-5">
+            <div className="flex items-center justify-between border-b-2 border-gray-100 pb-3">
+              <div>
+                <span className="text-[11px] font-black text-forest uppercase tracking-wider">Step 1 of 2</span>
+                <h2 className="text-lg font-display font-black text-navy-border">Mandi, Commodity & Arrival Date</h2>
+              </div>
+              <div className="text-xs text-gray-500 font-semibold hidden sm:block">
+                All slot capacities loaded directly from MySQL
+              </div>
+            </div>
 
-                {user && (
-                  <div className="p-3 bg-mint-light rounded-xl border border-navy-border flex items-center justify-between font-mono text-xs text-forest">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
-                      <span>Verified Account: <strong className="text-navy-border">{user.name}</strong></span>
-                    </div>
-                    <span className="font-bold text-[11px] bg-white px-2 py-0.5 rounded border border-navy-border">
-                      {user.village ? `${user.village}, ${user.district || 'Gujarat'}` : user.role || 'Farmer'}
-                    </span>
-                  </div>
-                )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* Mandi Selection */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-forest" /> Arrival Mandi Yard
+                </label>
+                <select
+                  value={selectedMandiId}
+                  onChange={(e) => setSelectedMandiId(Number(e.target.value))}
+                  className="w-full bg-gray-50 border-2 border-navy-border rounded-xl px-3.5 py-2.5 text-sm font-bold text-navy-border focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest"
+                >
+                  {mandis.map((m) => (
+                    <option key={m.Mandi_ID} value={m.Mandi_ID}>
+                      {m.Mandi_Name} ({m.District || 'Gujarat'})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                <div>
-                  <label className="block font-mono text-xs font-bold text-slate-600 mb-1.5 uppercase">
-                    Select Registered Producer
-                  </label>
-                  <select
-                    value={selectedFarmerId}
-                    onChange={(e) => setSelectedFarmerId(Number(e.target.value))}
-                    className="w-full h-12 px-3.5 bg-mint-light/40 border-[2px] border-navy-border rounded-xl font-mono text-xs sm:text-sm font-bold text-navy-border focus:ring-0 focus:border-forest shadow-bento-sm"
+              {/* Produce / Crop */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <Wheat className="w-3.5 h-3.5 text-forest" /> Produce / Commodity
+                </label>
+                <select
+                  value={selectedProduceId}
+                  onChange={(e) => setSelectedProduceId(Number(e.target.value))}
+                  className="w-full bg-gray-50 border-2 border-navy-border rounded-xl px-3.5 py-2.5 text-sm font-bold text-navy-border focus:bg-white focus:outline-none focus:ring-2 focus:ring-forest"
+                >
+                  {produceList.map((p) => (
+                    <option key={p.Produce_ID} value={p.Produce_ID}>
+                      {p.Produce_Name} ({p.Category})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Estimated Weight */}
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-forest" /> Estimated Delivery (Tons)
+                </label>
+                <input
+                  type="number"
+                  min="0.5"
+                  max="100"
+                  step="0.5"
+                  value={quantityTons}
+                  onChange={(e) => setQuantityTons(e.target.value)}
+                  className="w-full bg-gray-50 border-2 border-navy-border rounded-xl px-3.5 py-2 text-sm font-bold text-navy-border focus:bg-white focus:outline-none"
+                  placeholder="e.g. 8.5"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* DEDICATED DATE SELECTION SECTION */}
+            <div className="bg-mint-foam/50 border-2 border-emerald-200 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="text-xs font-black text-forest uppercase tracking-wider flex items-center gap-1.5">
+                  <CalendarDays className="w-4 h-4 text-emerald-700" /> Select Arrival Date (Choose date to reload slot chart)
+                </label>
+                
+                {/* Quick Date Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuickDate(0)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                      bookingDate === todayStr 
+                        ? 'bg-forest text-white border-navy-border shadow-sm' 
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-navy-border'
+                    }`}
                   >
-                    {farmers.map((f) => (
-                      <option key={f.Farmer_ID} value={f.Farmer_ID}>
-                        {f.Full_Name} ({f.District}, {f.Village}) • Phone: {f.Phone_Number}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Step 2: Mandi Selection & Slot Grid */}
-              <div className="bg-white p-6 rounded-bento border-[2.5px] border-navy-border shadow-bento space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100">
-                  <div className="flex items-center gap-2 text-navy-border font-display font-extrabold text-sm uppercase">
-                    <MapPin className="w-4 h-4 text-forest" />
-                    <span>Step 2: Destination APMC Yard</span>
-                  </div>
-                  <span className="font-mono text-xs font-bold text-forest">Live Daily Limit</span>
-                </div>
-
-                <div>
-                  <label className="block font-mono text-xs font-bold text-slate-600 mb-1.5 uppercase">
-                    Select Target Mandi
-                  </label>
-                  <select
-                    value={selectedMandiId}
-                    onChange={(e) => setSelectedMandiId(Number(e.target.value))}
-                    className="w-full h-12 px-3.5 bg-mint-light/40 border-[2px] border-navy-border rounded-xl font-mono text-xs sm:text-sm font-bold text-navy-border focus:ring-0 focus:border-forest shadow-bento-sm"
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickDate(1)}
+                    className="px-3 py-1 rounded-lg text-xs font-bold bg-white text-gray-700 border border-gray-300 hover:border-navy-border transition-all"
                   >
-                    {mandis.map((m) => (
-                      <option key={m.Mandi_ID} value={m.Mandi_ID}>
-                        {m.Mandi_Name} ({m.District}) • Cap: {m.Daily_Capacity_Tons || 250}T
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Available Slots Grid */}
-                <div className="pt-2">
-                  <label className="block font-mono text-xs font-bold text-slate-600 mb-2 uppercase flex items-center justify-between">
-                    <span>Available Slot Arrival Windows</span>
-                    {loadingSlots && <span className="text-forest text-xs font-bold">Updating...</span>}
-                  </label>
-
-                  {slots.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-canvas border-[1.5px] border-navy-border text-center font-mono text-xs font-semibold text-slate-500">
-                      No active slots configured for this Mandi.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {slots.map((slot) => {
-                        const isFull = slot.Remaining_Capacity_Tons <= 0;
-                        const isSelected = selectedSlotId === slot.Slot_ID;
-                        const percentFilled = Math.min(
-                          100,
-                          Math.round(
-                            ((slot.Max_Capacity_Tons - slot.Remaining_Capacity_Tons) /
-                              slot.Max_Capacity_Tons) *
-                              100
-                          )
-                        );
-
-                        return (
-                          <div
-                            key={slot.Slot_ID}
-                            onClick={() => !isFull && setSelectedSlotId(slot.Slot_ID)}
-                            className={`p-3.5 rounded-2xl border-[2px] transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-saffron/20 border-navy-border shadow-bento-sm'
-                                : isFull
-                                ? 'bg-canvas border-slate-300 opacity-60 cursor-not-allowed'
-                                : 'bg-white border-navy-border hover:bg-mint-light/30 shadow-sm'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-mono text-xs font-black text-navy-border flex items-center gap-1">
-                                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                                <span>{new Date(slot.Slot_Date).toLocaleDateString()}</span>
-                              </span>
-                              <span
-                                className={`font-mono text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
-                                  isFull
-                                    ? 'bg-coral text-coral-dark border-navy-border'
-                                    : percentFilled > 75
-                                    ? 'bg-saffron text-navy-border border-navy-border'
-                                    : 'bg-mint-foam text-forest border-navy-border'
-                                }`}
-                              >
-                                {isFull ? 'Full' : `${slot.Remaining_Capacity_Tons}T Left`}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-1 font-mono text-xs text-forest-light font-bold mb-2">
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>
-                                {slot.Start_Time.slice(0, 5)} - {slot.End_Time.slice(0, 5)}
-                              </span>
-                            </div>
-
-                            <div className="w-full bg-canvas h-2 rounded-full border border-navy-border overflow-hidden p-0.5">
-                              <div
-                                className={`h-full rounded-full ${
-                                  isFull ? 'bg-coral-dark' : percentFilled > 75 ? 'bg-saffron' : 'bg-forest'
-                                }`}
-                                style={{ width: `${percentFilled}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                    Tomorrow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickDate(2)}
+                    className="px-3 py-1 rounded-lg text-xs font-bold bg-white text-gray-700 border border-gray-300 hover:border-navy-border transition-all"
+                  >
+                    +2 Days
+                  </button>
                 </div>
               </div>
 
-              {/* Step 3: Produce & Weight */}
-              <div className="bg-white p-6 rounded-bento border-[2.5px] border-navy-border shadow-bento space-y-4">
-                <div className="flex items-center gap-2 pb-3 border-b-2 border-slate-100 text-navy-border font-display font-extrabold text-sm uppercase">
-                  <Wheat className="w-4 h-4 text-forest" />
-                  <span>Step 3: Produce &amp; Lot Quantity</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block font-mono text-xs font-bold text-slate-600 mb-1.5 uppercase">
-                      Commodity
-                    </label>
-                    <select
-                      value={selectedProduceId}
-                      onChange={(e) => setSelectedProduceId(Number(e.target.value))}
-                      className="w-full h-12 px-3.5 bg-mint-light/40 border-[2px] border-navy-border rounded-xl font-mono text-xs font-bold text-navy-border focus:ring-0 focus:border-forest shadow-bento-sm"
-                    >
-                      {produceList.map((p) => (
-                        <option key={p.Produce_ID} value={p.Produce_ID}>
-                          {p.Produce_Name} ({p.Category}) • Base ₹{p.Base_Price_Per_Ton}/T
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-mono text-xs font-bold text-slate-600 mb-1.5 uppercase">
-                      Declared Weight (Metric Tons)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      placeholder="e.g. 4.5"
-                      value={estimatedWeight}
-                      onChange={(e) => setEstimatedWeight(e.target.value ? Number(e.target.value) : '')}
-                      className="w-full h-12 px-3.5 bg-mint-light/40 border-[2px] border-navy-border rounded-xl font-mono text-sm font-bold text-navy-border focus:ring-0 focus:border-forest shadow-bento-sm"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Confirm Booking CTA */}
-              <button
-                type="submit"
-                disabled={loading || !selectedSlotId || slots.length === 0}
-                className="w-full py-4 rounded-xl bg-forest hover:bg-forest-light disabled:bg-slate-300 disabled:text-slate-500 text-white font-display font-black text-sm uppercase tracking-wider border-[2px] border-navy-border shadow-bento hover:shadow-bento-hover active:translate-y-0.5 transition-all flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin text-saffron" />
-                    <span>Allocating Slot...</span>
-                  </>
-                ) : (
-                  <>
-                    <QrCode className="w-5 h-5 text-saffron" />
-                    <span>Confirm Booking &amp; Issue Gate-Pass Slip</span>
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Right Summary Sidebar (5 Cols) */}
-          <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white p-6 rounded-bento border-[2.5px] border-navy-border shadow-bento space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100">
-                <h3 className="font-display font-black text-base text-navy-border uppercase">
-                  Reservation Ticket Summary
-                </h3>
-                <span className="px-2 py-0.5 bg-saffron text-navy-border font-mono text-[10px] font-black rounded border border-navy-border">
-                  VERIFIED
+              <div className="flex items-center gap-3">
+                <input
+                  type="date"
+                  min={todayStr}
+                  value={bookingDate}
+                  onChange={(e) => setBookingDate(e.target.value)}
+                  className="bg-white border-2 border-navy-border rounded-xl px-4 py-2 text-sm font-extrabold text-navy-border shadow-sm focus:outline-none focus:ring-2 focus:ring-forest cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-gray-600">
+                  Showing slots for: <span className="font-bold text-forest">{bookingDate}</span>
                 </span>
               </div>
+            </div>
 
-              <div className="space-y-3 font-mono text-xs text-slate-600">
-                <div className="flex justify-between pb-2 border-b border-slate-100">
-                  <span className="text-slate-400 uppercase font-bold">Mandi Yard:</span>
-                  <span className="font-bold text-navy-border">
-                    {mandis.find((m) => m.Mandi_ID === Number(selectedMandiId))?.Mandi_Name || 'None'}
-                  </span>
-                </div>
+          </div>
 
-                <div className="flex justify-between pb-2 border-b border-slate-100">
-                  <span className="text-slate-400 uppercase font-bold">Date Window:</span>
-                  <span className="font-bold text-navy-border">
-                    {selectedSlot ? new Date(selectedSlot.Slot_Date).toLocaleDateString() : 'N/A'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between pb-2 border-b border-slate-100">
-                  <span className="text-slate-400 uppercase font-bold">Arrival Time:</span>
-                  <span className="font-bold text-forest">
-                    {selectedSlot ? `${selectedSlot.Start_Time.slice(0, 5)} - ${selectedSlot.End_Time.slice(0, 5)}` : 'N/A'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between pb-2 border-b border-slate-100">
-                  <span className="text-slate-400 uppercase font-bold">Remaining Cap:</span>
-                  <span className="font-bold text-navy-border">
-                    {selectedSlot ? `${selectedSlot.Remaining_Capacity_Tons} Tons` : 'N/A'}
-                  </span>
-                </div>
-
-                <div className="flex justify-between pb-2 border-b border-slate-100">
-                  <span className="text-slate-400 uppercase font-bold">Declared Weight:</span>
-                  <span className="font-bold text-navy-border">
-                    {estimatedWeight ? `${estimatedWeight} MT (${Number(estimatedWeight) * 1000} KG)` : '0.0 MT'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="p-3.5 bg-mint-light rounded-xl border-[1.5px] border-navy-border text-xs font-mono text-forest space-y-1">
-                <div className="font-black flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>TRANSACTION CONCURRENCY SAFE</span>
-                </div>
-                <p className="text-[11px] text-slate-600">
-                  Slot capacity is decremented atomically with row locks. No overbooking is mathematically possible.
+          {/* STEP 2: 20-MINUTE TIME-SLOTS BOX CHART (09:00 AM - 05:00 PM) */}
+          <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento space-y-6">
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b-2 border-gray-100 pb-4">
+              <div>
+                <span className="text-[11px] font-black text-forest uppercase tracking-wider">Step 2 of 2</span>
+                <h2 className="text-xl font-display font-black text-navy-border">
+                  20-Minute Arrival Time-Slot Chart
+                </h2>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  Select a <span className="text-emerald-700 font-bold">🟢 GREEN</span> box to book. <span className="text-rose-700 font-bold">🔴 RED</span> boxes are fully booked.
                 </p>
               </div>
+
+              {/* Color Code Legend */}
+              <div className="flex flex-wrap items-center gap-3 text-xs font-bold">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-emerald-500 border border-emerald-700 shadow-sm inline-block"></span>
+                  <span className="text-gray-700">Available</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-blue-600 border border-blue-800 shadow-sm inline-block"></span>
+                  <span className="text-gray-700">Your Selection</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-rose-500 border border-rose-700 shadow-sm inline-block"></span>
+                  <span className="text-gray-700">Booked / Full</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3.5 h-3.5 rounded-md bg-gray-300 border border-gray-400 shadow-sm inline-block"></span>
+                  <span className="text-gray-700">Lunch Break</span>
+                </div>
+              </div>
             </div>
 
-            {/* Quick Check Existing Pass Card */}
-            <div className="bg-mint-foam p-6 rounded-bento border-[2.5px] border-navy-border shadow-bento space-y-3">
-              <span className="font-mono text-[10px] font-black text-forest uppercase tracking-wider block">
-                EXISTING PASS LOOKUP
-              </span>
-              <h4 className="font-display font-black text-lg text-navy-border">Have a Token Already?</h4>
-              <p className="text-xs text-slate-600 font-medium">
-                You can reprint, verify, or cancel your existing pass ticket from the My Passes tab.
-              </p>
-              <button
-                onClick={() => setActiveTab('history')}
-                className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-50 border-[1.5px] border-navy-border text-navy-border font-mono text-xs font-bold shadow-bento-sm active:translate-y-0.5 transition-all flex items-center justify-center gap-1.5"
-              >
-                <span>Look Up My Bookings</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: MY BOOKINGS & PASS LOOKUP */}
-      {activeTab === 'history' && (
-        <div className="space-y-6">
-          {/* Search bar */}
-          <div className="bg-white p-6 rounded-bento border-[2.5px] border-navy-border shadow-bento flex flex-col sm:flex-row items-center gap-3">
-            <div className="relative flex-1 w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search by Gate-Pass Token (e.g. AG-T001) or numeric Farmer ID (e.g. 1)..."
-                value={historySearchQuery}
-                onChange={(e) => setHistorySearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearchHistory()}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-mint-light/40 border-[2px] border-navy-border font-mono text-xs sm:text-sm font-bold text-navy-border placeholder-slate-400 focus:ring-0 focus:border-forest"
-              />
-            </div>
-            <button
-              onClick={handleSearchHistory}
-              disabled={loadingHistory}
-              className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-xs uppercase tracking-wider border-[2px] border-navy-border shadow-bento-sm active:translate-y-0.5 flex items-center justify-center gap-1.5"
-            >
-              {loadingHistory ? (
-                <span>Searching...</span>
-              ) : (
-                <>
-                  <Search className="w-4 h-4" />
-                  <span>Search Pass</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Bookings Table / List */}
-          <div className="bg-white rounded-bento border-[2.5px] border-navy-border shadow-bento overflow-hidden">
-            <div className="px-6 py-4 border-b-2 border-slate-100 flex items-center justify-between">
-              <h3 className="font-display font-black text-base text-navy-border uppercase">
-                Active Booking Records
-              </h3>
-              <span className="font-mono text-xs font-bold text-slate-400">
-                {farmerBookings.length} passes found
-              </span>
-            </div>
-
-            {farmerBookings.length === 0 ? (
-              <div className="p-8 text-center font-mono text-xs font-semibold text-slate-500">
-                No active bookings found. Try searching by your Gate-Pass Token (e.g. AG-T10001) or book a new slot above.
+            {loadingSlots ? (
+              <div className="py-12 text-center text-sm font-bold text-gray-500 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-forest" />
+                Querying slot capacity from MySQL...
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left font-mono text-xs">
-                  <thead className="bg-canvas text-slate-500 uppercase font-black border-b border-navy-border">
-                    <tr>
-                      <th className="px-6 py-3">Token Slip</th>
-                      <th className="px-6 py-3">Mandi Yard</th>
-                      <th className="px-6 py-3">Arrival Window</th>
-                      <th className="px-6 py-3">Commodity</th>
-                      <th className="px-6 py-3">Weight</th>
-                      <th className="px-6 py-3">Status</th>
-                      <th className="px-6 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-navy-border">
-                    {farmerBookings.map((b) => {
-                      const st = String(b.Booking_Status || '').toUpperCase();
-                      const isConfirmed = st === 'CONFIRMED';
-                      const isCheckedIn = st.includes('CHECK');
-                      const isCompleted = st === 'COMPLETED';
-                      const tokenDisplay = b.Token_Number || b.Gate_Pass_Token || `AG-T${b.Booking_ID}`;
+              <div className="space-y-6">
+                
+                {/* MORNING SESSION: 09:00 AM - 01:00 PM */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-black text-[10px] uppercase border border-amber-300">
+                      🌅 Morning Session
+                    </span>
+                    <span className="text-xs font-bold text-gray-500">09:00 AM — 01:00 PM (12 Slots)</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {morningConfigs.map((cfg) => {
+                      const dbRow = getDbSlotForConfig(cfg);
+                      const isBooked = dbRow ? Number(dbRow.Remaining_Capacity_Tons) <= 0 : false;
+                      const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
+                      const remainingTons = dbRow ? Number(dbRow.Remaining_Capacity_Tons) : 50;
 
                       return (
-                        <tr key={b.Booking_ID} className="hover:bg-mint-light/20 transition-colors">
-                          <td className="px-6 py-4 font-black text-forest">{tokenDisplay}</td>
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-navy-border">{b.Mandi_Name}</div>
-                            <div className="text-[11px] text-slate-400">{b.District}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div>{b.Slot_Date ? new Date(b.Slot_Date).toLocaleDateString() : 'Today'}</div>
-                            <div className="text-[11px] text-forest font-bold">
-                              {b.Start_Time?.slice(0, 5)} - {b.End_Time?.slice(0, 5)}
+                        <button
+                          key={cfg.id}
+                          type="button"
+                          disabled={isBooked}
+                          onClick={() => {
+                            if (dbRow) setSelectedSlotId(dbRow.Slot_ID);
+                          }}
+                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between h-24 ${
+                            isSelected
+                              ? 'bg-blue-600 border-navy-border text-white shadow-bento scale-[1.03] z-10'
+                              : isBooked
+                              ? 'bg-rose-50 border-rose-300 text-rose-800 opacity-75 cursor-not-allowed'
+                              : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-75">
+                              {cfg.id}
                             </div>
-                          </td>
-                          <td className="px-6 py-4">{b.Produce_Name}</td>
-                          <td className="px-6 py-4 font-bold">{b.Estimated_Weight_Tons} MT</td>
-                          <td className="px-6 py-4">
-                            <span
-                              className={`px-2 py-0.5 rounded-full font-black text-[10px] uppercase border ${
-                                isConfirmed
-                                  ? 'bg-mint-foam text-forest border-navy-border'
-                                  : isCheckedIn
-                                  ? 'bg-periwinkle text-indigo-900 border-navy-border'
-                                  : isCompleted
-                                  ? 'bg-lilac text-lilac-dark border-navy-border'
-                                  : 'bg-coral text-coral-dark border-navy-border'
-                              }`}
-                            >
-                              {b.Booking_Status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right space-x-1.5 whitespace-nowrap">
-                            <button
-                              onClick={() => setActivePassBooking(b)}
-                              className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 border-[1.5px] border-navy-border text-navy-border font-bold text-xs shadow-bento-sm active:translate-y-0.5"
-                            >
-                              Slip
-                            </button>
-                            <button
-                              onClick={() => setSmsModalBooking(b)}
-                              className="px-2.5 py-1 rounded-lg bg-mint-foam hover:bg-mint-light border-[1.5px] border-navy-border text-forest font-bold text-xs shadow-bento-sm active:translate-y-0.5"
-                            >
-                              SMS
-                            </button>
-                            {isConfirmed && (
-                              <button
-                                onClick={() => handleCancelBooking(b.Booking_ID)}
-                                className="px-2.5 py-1 rounded-lg bg-coral hover:bg-coral-dark hover:text-white border-[1.5px] border-navy-border text-coral-dark font-bold text-xs shadow-bento-sm active:translate-y-0.5"
-                              >
-                                Cancel
-                              </button>
+                            <div className="text-xs font-black mt-0.5 leading-snug">
+                              {cfg.label.replace(' - ', ' to ')}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-[11px] font-extrabold">
+                            {isSelected ? (
+                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-1.5 py-0.5 rounded">
+                                <Check className="w-3 h-3" /> Selected
+                              </span>
+                            ) : isBooked ? (
+                              <span className="text-rose-700 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🔴 FULL
+                              </span>
+                            ) : (
+                              <span className="text-emerald-800 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🟢 {remainingTons.toFixed(1)}T Free
+                              </span>
                             )}
-                          </td>
-                        </tr>
+                          </div>
+                        </button>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
+
+                {/* MANDI LUNCH BREAK RECESSED (01:00 PM - 02:00 PM) */}
+                <div className="bg-gray-100 border-2 border-dashed border-gray-400 rounded-2xl p-4 text-center space-y-1">
+                  <div className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider text-gray-700">
+                    <Coffee className="w-4 h-4 text-amber-700" />
+                    Mandi Operational Lunch Recess (01:00 PM — 02:00 PM)
+                  </div>
+                  <p className="text-[11px] text-gray-500 font-semibold">
+                    Yard gates are closed for weighbridge maintenance and staff lunch. No slot allocation available in this window.
+                  </p>
+                </div>
+
+                {/* AFTERNOON SESSION: 02:00 PM - 05:00 PM */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-900 font-black text-[10px] uppercase border border-blue-300">
+                      🌇 Afternoon Session
+                    </span>
+                    <span className="text-xs font-bold text-gray-500">02:00 PM — 05:00 PM (9 Slots)</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {afternoonConfigs.map((cfg) => {
+                      const dbRow = getDbSlotForConfig(cfg);
+                      const isBooked = dbRow ? Number(dbRow.Remaining_Capacity_Tons) <= 0 : false;
+                      const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
+                      const remainingTons = dbRow ? Number(dbRow.Remaining_Capacity_Tons) : 50;
+
+                      return (
+                        <button
+                          key={cfg.id}
+                          type="button"
+                          disabled={isBooked}
+                          onClick={() => {
+                            if (dbRow) setSelectedSlotId(dbRow.Slot_ID);
+                          }}
+                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between h-24 ${
+                            isSelected
+                              ? 'bg-blue-600 border-navy-border text-white shadow-bento scale-[1.03] z-10'
+                              : isBooked
+                              ? 'bg-rose-50 border-rose-300 text-rose-800 opacity-75 cursor-not-allowed'
+                              : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-75">
+                              {cfg.id}
+                            </div>
+                            <div className="text-xs font-black mt-0.5 leading-snug">
+                              {cfg.label.replace(' - ', ' to ')}
+                            </div>
+                          </div>
+
+                          <div className="mt-2 flex items-center justify-between text-[11px] font-extrabold">
+                            {isSelected ? (
+                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-1.5 py-0.5 rounded">
+                                <Check className="w-3 h-3" /> Selected
+                              </span>
+                            ) : isBooked ? (
+                              <span className="text-rose-700 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🔴 FULL
+                              </span>
+                            ) : (
+                              <span className="text-emerald-800 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🟢 {remainingTons.toFixed(1)}T Free
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* MODAL: NEW FARMER REGISTRATION */}
-      {showRegisterModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-border/60 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border-[2.5px] border-navy-border rounded-bento shadow-bento-lg p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-slate-100">
-              <h3 className="font-display font-black text-base text-navy-border uppercase">
-                Register Producer
-              </h3>
-              <button
-                onClick={() => setShowRegisterModal(false)}
-                className="text-slate-400 hover:text-navy-border font-bold text-lg"
-              >
-                &times;
-              </button>
-            </div>
-
-            <form onSubmit={handleRegisterFarmer} className="space-y-3 font-mono text-xs">
+            {/* SELECTION SUMMARY & CONFIRMATION BAR */}
+            <div className="bg-mint-foam rounded-2xl border-2 border-navy-border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
               <div>
-                <label className="block text-slate-600 font-bold mb-1 uppercase">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Ramesh Patel"
-                  value={newFarmer.Full_Name}
-                  onChange={(e) => setNewFarmer({ ...newFarmer, Full_Name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-mint-light/40 border-[2px] border-navy-border text-navy-border font-bold focus:ring-0 focus:border-forest"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 font-bold mb-1 uppercase">Phone Number</label>
-                  <input
-                    type="tel"
-                    required
-                    pattern="[0-9]{10}"
-                    placeholder="10 digits"
-                    value={newFarmer.Phone_Number}
-                    onChange={(e) => setNewFarmer({ ...newFarmer, Phone_Number: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-mint-light/40 border-[2px] border-navy-border text-navy-border font-bold focus:ring-0 focus:border-forest"
-                  />
+                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                  Chosen Arrival Window
+                </span>
+                <div className="text-base font-display font-black text-navy-border mt-0.5">
+                  {selectedConfig ? selectedConfig.label : 'Select a slot from chart above'}
                 </div>
-                <div>
-                  <label className="block text-slate-600 font-bold mb-1 uppercase">Aadhaar (12 digits)</label>
-                  <input
-                    type="text"
-                    required
-                    pattern="[0-9]{12}"
-                    placeholder="12 digits"
-                    value={newFarmer.Aadhaar_Number}
-                    onChange={(e) => setNewFarmer({ ...newFarmer, Aadhaar_Number: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-mint-light/40 border-[2px] border-navy-border text-navy-border font-bold focus:ring-0 focus:border-forest"
-                  />
+                <div className="text-xs text-gray-600 font-semibold mt-0.5">
+                  Date: <span className="font-bold text-navy-border">{bookingDate}</span> • Commodity: <span className="font-bold text-navy-border">{produceList.find(p => p.Produce_ID === Number(selectedProduceId))?.Produce_Name || 'Produce'}</span> • Weight: <span className="font-bold text-navy-border">{quantityTons} Tons</span>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-600 font-bold mb-1 uppercase">UPI ID (Payouts)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. ramesh@upi"
-                  value={newFarmer.UPI_ID}
-                  onChange={(e) => setNewFarmer({ ...newFarmer, UPI_ID: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-mint-light/40 border-[2px] border-navy-border text-navy-border font-bold focus:ring-0 focus:border-forest"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 font-bold mb-1 uppercase">Village</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Bardoli"
-                    value={newFarmer.Village}
-                    onChange={(e) => setNewFarmer({ ...newFarmer, Village: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-mint-light/40 border-[2px] border-navy-border text-navy-border font-bold focus:ring-0 focus:border-forest"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-600 font-bold mb-1 uppercase">District</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Surat"
-                    value={newFarmer.District}
-                    onChange={(e) => setNewFarmer({ ...newFarmer, District: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-mint-light/40 border-[2px] border-navy-border text-navy-border font-bold focus:ring-0 focus:border-forest"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-3 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowRegisterModal(false)}
-                  className="px-4 py-2 rounded-xl bg-canvas border-[1.5px] border-navy-border font-bold"
-                >
-                  Cancel
-                </button>
+              {user ? (
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="px-5 py-2 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black uppercase tracking-wider border-[1.5px] border-navy-border shadow-bento-sm"
+                  disabled={submitting || !selectedSlotId}
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Saving...' : 'Save Producer'}
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-saffron" />
+                      <span>Booking in MySQL...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Confirm Booking & Generate Gate Pass</span>
+                      <ArrowRight className="w-4 h-4 text-saffron" />
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openLogin}
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px]"
+                >
+                  <Lock className="w-4 h-4 text-white" />
+                  <span>Log In to Confirm Booking</span>
+                </button>
+              )}
+            </div>
+
+          </div>
+
+        </form>
+      )}
+
+      {/* ========================================================================= */}
+      {/* TAB 2: MY BOOKINGS & DIGITAL PASSES                                       */}
+      {/* ========================================================================= */}
+      {activeTab === 'history' && (
+        <div className="space-y-6">
+          
+          <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-display font-black text-navy-border">
+                  My Bookings & Gate Pass Tokens
+                </h2>
+                <p className="text-xs text-gray-600 mt-1">
+                  Present your unique Token Code upon arrival at the Mandi Gate for clearance.
+                </p>
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Filter by token, date..."
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border-2 border-navy-border rounded-xl text-xs font-bold focus:bg-white focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {loadingHistory ? (
+              <div className="py-12 text-center text-sm font-bold text-gray-500">
+                <RefreshCw className="w-5 h-5 animate-spin mx-auto text-forest mb-2" />
+                Loading your bookings...
+              </div>
+            ) : !user ? (
+              <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-3">
+                <Lock className="w-10 h-10 text-gray-400 mx-auto" />
+                <div className="text-sm font-bold text-gray-700">Please sign in to view your Gate Pass Tokens and booking history.</div>
+                <button
+                  type="button"
+                  onClick={openLogin}
+                  className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border shadow-sm hover:bg-forest-light transition-all"
+                >
+                  Sign In with Farmer Account
                 </button>
               </div>
-            </form>
+            ) : myBookings.length === 0 ? (
+              <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-2">
+                <Tractor className="w-10 h-10 text-gray-400 mx-auto" />
+                <div className="text-sm font-bold text-gray-700">No bookings found yet.</div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('book')}
+                  className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border"
+                >
+                  Book Your First Arrival Slot
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {myBookings
+                  .filter(b => {
+                    if (!searchFilter) return true;
+                    const q = searchFilter.toLowerCase();
+                    const tok = (b.Token_Number || b.Gate_Pass_Token || '').toLowerCase();
+                    const date = (b.Slot_Date || '').toLowerCase();
+                    const prod = (b.Produce_Name || '').toLowerCase();
+                    return tok.includes(q) || date.includes(q) || prod.includes(q);
+                  })
+                  .map((booking, idx) => {
+                    const token = booking.Token_Number || booking.Gate_Pass_Token || `AG-T${booking.Booking_ID}`;
+                    const status = booking.Booking_Status || 'Confirmed';
+
+                    return (
+                      <div
+                        key={booking.Booking_ID || idx}
+                        className="bg-white rounded-2xl border-2 border-navy-border p-5 shadow-sm space-y-3 relative hover:shadow-md transition-all"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                              Mandi Gate Token
+                            </span>
+                            <div className="text-xl font-mono font-black text-forest">
+                              {token}
+                            </div>
+                          </div>
+
+                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${
+                            status === 'Confirmed'
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : status === 'Checked-In'
+                              ? 'bg-blue-100 text-blue-800 border-blue-300'
+                              : status === 'Completed'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : 'bg-rose-100 text-rose-800 border-rose-300'
+                          }`}>
+                            {status === 'Checked-In' ? 'In Process (Yard)' : status}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-gray-100">
+                          <div>
+                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Mandi Yard</span>
+                            <span className="font-bold text-navy-border">{booking.Mandi_Name || 'APMC Surat'}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Commodity</span>
+                            <span className="font-bold text-navy-border">{booking.Produce_Name || 'Wheat'}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Arrival Date</span>
+                            <span className="font-bold text-navy-border">{booking.Slot_Date ? booking.Slot_Date.split('T')[0] : 'Today'}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Time Window</span>
+                            <span className="font-bold text-navy-border">
+                              {booking.Start_Time ? `${booking.Start_Time.slice(0, 5)} - ${booking.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 flex items-center justify-between border-t border-gray-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSuccessBooking(booking);
+                              setShowGatePassModal(true);
+                            }}
+                            className="px-3 py-1.5 rounded-lg bg-mint-foam hover:bg-emerald-100 text-forest text-xs font-bold border border-emerald-300 flex items-center gap-1.5 shadow-sm"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                            <span>View / Print Pass</span>
+                          </button>
+
+                          {status === 'Confirmed' && (
+                            <button
+                              type="button"
+                              onClick={() => setCancelModal({ open: true, booking })}
+                              className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200"
+                            >
+                              Cancel Slot
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+
+          </div>
+
+        </div>
+      )}
+
+      {/* GATE PASS MODAL */}
+      {showGatePassModal && successBooking && (
+        <GatePassModal
+          booking={successBooking}
+          onClose={() => setShowGatePassModal(false)}
+        />
+      )}
+
+      {/* CANCELLATION CONFIRMATION MODAL */}
+      {cancelModal.open && cancelModal.booking && (
+        <div className="fixed inset-0 bg-navy-border/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 max-w-md w-full shadow-bento space-y-4">
+            <div className="flex items-center gap-3 text-rose-700">
+              <AlertCircle className="w-6 h-6 flex-shrink-0" />
+              <h3 className="text-lg font-display font-black text-navy-border">
+                Cancel Arrival Slot?
+              </h3>
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Are you sure you want to cancel booking token <span className="font-mono font-bold text-navy-border">{cancelModal.booking.Token_Number || cancelModal.booking.Gate_Pass_Token}</span>?
+              This will automatically release the slot capacity back to the Mandi yard in MySQL.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCancelModal({ open: false, booking: null })}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 border border-gray-300"
+              >
+                Keep Booking
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteCancel}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white border border-rose-800 shadow-sm"
+              >
+                Yes, Cancel & Release
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* POPUP: ACTIVE GATE PASS MODAL */}
-      {activePassBooking && (
-        <GatePassModal
-          booking={activePassBooking}
-          onClose={() => setActivePassBooking(null)}
-          onOpenSms={() => {
-            setSmsModalBooking(activePassBooking);
-          }}
-        />
-      )}
-
-      {/* POPUP: SIMULATED SMS / WHATSAPP NOTIFICATION MODAL */}
-      {smsModalBooking && (
-        <SmsNotificationModal
-          booking={smsModalBooking}
-          onClose={() => setSmsModalBooking(null)}
-          onOpenGatePass={() => {
-            setActivePassBooking(smsModalBooking);
-          }}
-        />
-      )}
     </div>
   );
 }
 
-export default function FarmerPortalPage() {
+export default function FarmerPage() {
   return (
-    <Suspense fallback={<div className="text-center py-12 font-mono text-slate-500">Loading slot reservation portal...</div>}>
+    <Suspense fallback={
+      <div className="py-20 text-center font-bold text-gray-500">
+        Loading Farmer Portal...
+      </div>
+    }>
       <FarmerPortalContent />
     </Suspense>
   );

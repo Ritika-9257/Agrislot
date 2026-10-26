@@ -80,8 +80,10 @@ export function AuthProvider({ children }) {
         const liveRole = res.data.user?.role || res.data.user?.Role || res.data.user?.User_Role || 'Farmer';
         const userData = {
           userId: res.data.user?.userId || res.data.user?.User_ID,
-          name: res.data.user?.Full_Name || res.data.user?.Username || username,
+          name: res.data.user?.name || res.data.user?.Full_Name || res.data.user?.username || res.data.user?.Username || username,
           username: res.data.user?.username || res.data.user?.Username || username,
+          email: res.data.user?.email || res.data.user?.Email || null,
+          farmerId: res.data.user?.farmerId || res.data.user?.Farmer_ID || null,
           role: liveRole,
           token: res.data.token,
         };
@@ -139,6 +141,7 @@ export function AuthProvider({ children }) {
         username: res.data.user?.username,
         name: res.data.user?.name || res.data.user?.email?.split('@')[0],
         email: res.data.user?.email,
+        farmerId: res.data.user?.farmerId || null,
         avatar: res.data.user?.avatar,
         role: liveRole,
         token: res.data.token,

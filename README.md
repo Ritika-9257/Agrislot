@@ -1,8 +1,43 @@
-# AgriSlot - Backend REST API & DBMS Platform
+# AgriSlot - APMC Mandi Slot Booking & DBMS Platform
 
-AgriSlot is an APMC (Agricultural Produce Market Committee) Mandi slot-booking and gate-pass management platform. It allows farmers to reserve delivery time slots before arriving at market yards, eliminating overcrowding, traffic congestion, and long queues while providing mandi administrators with transaction and capacity controls.
+AgriSlot is an APMC (Agricultural Produce Market Committee) Mandi slot-booking and gate-pass management platform. It allows farmers to reserve delivery time slots before arriving at market yards, eliminating overcrowding, traffic congestion, and long queues while providing mandi officers with token-based gate clearance and capacity controls.
 
-This project includes complete database automation (Stored Procedures, Explicit Cursors, Functions, Triggers, and Roles) and advanced analytics (Query Engine, Indexing & Execution Benchmarks, Views, XML Data Extraction, and an Interactive Web Dashboard).
+The platform is purpose-built with **two clean, non-technical interfaces**:
+1. **🌾 Farmer Portal (`/farmer`)**: Check available slots via an intuitive 20-minute visual box chart, book delivery slots, receive unique gate-pass tokens (`AG-T...`), and view/cancel bookings.
+2. **🛡️ Mandi Officer / Admin Desk (`/admin`)**: Search and verify tokens, allow entry ("Check In"), monitor active vehicles currently inside the yard ("In-Process"), mark arrivals as "Completed", and dynamically authorize admin email IDs.
+
+---
+
+## 🔑 Quick Access & Demo Credentials
+
+| Role | Interface URL | Email ID | Password | Access Privileges |
+| :--- | :--- | :--- | :--- | :--- |
+| **Mandi Admin** | [`/admin`](http://localhost:3000/admin) | `admin@agrislot.com` | `admin123` | Full admin desk, gate token check-in, in-process tracking, dynamic admin email allocation |
+| **Mandi Officer** | [`/admin`](http://localhost:3000/admin) | `officer@agrislot.com` | `officer123` | Mandi officer desk, token verification, gate entry and completion management |
+| **Farmer** | [`/farmer`](http://localhost:3000/farmer) | `farmer@agrislot.com` | `farmer123` | Slot box chart booking, token receipt, printable gate pass, booking cancellation |
+
+> **Note**: Both Email IDs and Usernames are supported for login (e.g., `admin` / `admin123` or `farmer` / `farmer123`). Public signups or Google sign-ins strictly default to the `Farmer` role. Existing administrators can dynamically promote any registered email ID to `Admin` directly from the UI.
+
+---
+
+## 📊 Visual Slot Box Chart System
+
+The farmer booking interface features a 20-minute box chart running from 09:00 AM to 05:00 PM:
+- 🟢 **Green (Available)**: Free slot capacity. Click to select.
+- 🔵 **Blue (Selected)**: The slot currently chosen by the farmer.
+- 🔴 **Red (Booked / Full)**: Slot is fully reserved (0 tons remaining). Disabled from booking.
+- 🔘 **Grey (Lunch Break)**: Mandi lunch recess between 01:00 PM and 02:00 PM. Non-bookable.
+
+---
+
+## 🔄 End-to-End Gate Pass Workflow
+
+1. **Farmer Books Slot**: Farmer selects Mandi, Date, Produce, and estimated weight &rarr; picks a 🟢 Green slot &rarr; clicks **Confirm Booking**.
+2. **Token Generated**: A unique, tamper-proof gate pass token is generated (e.g., `AG-T2610-A1B2C3`) along with an e-Gate Pass card.
+3. **Arrival & Gate Check-In**: Upon arriving at the mandi gate, the farmer presents the token to the Mandi Officer.
+4. **Officer Verification**: The Mandi Officer enters the token at the Admin Desk (`/admin`) and clicks **"Allow Entry / Check In"**.
+5. **In-Process Tracking**: The booking status transitions to `Checked-In` (`In Process`), reflecting that the vehicle has entered the yard.
+6. **Completion**: Once produce unloading and auction are done, the officer marks the booking as **"Completed"**, concluding the visit.
 
 ---
 

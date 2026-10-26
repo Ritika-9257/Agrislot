@@ -438,7 +438,7 @@ export default function AuthModal() {
                 <form onSubmit={handleSignIn} className="space-y-3 font-mono text-xs">
                   <div>
                     <label className="block font-bold text-slate-600 mb-1 uppercase">
-                      Username / Mobile
+                      Email or Username
                     </label>
                     <div className="relative">
                       <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -447,7 +447,7 @@ export default function AuthModal() {
                         required
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="e.g. farmer or admin"
+                        placeholder="e.g. admin@agrislot.com or farmer@agrislot.com"
                         className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
                       />
                     </div>
@@ -488,28 +488,28 @@ export default function AuthModal() {
                   {/* Fast 1-Click Demo Profiles */}
                   <div className="pt-2">
                     <span className="font-mono text-[10px] font-bold text-slate-400 uppercase block mb-1.5 text-center">
-                      Demo Quick-Login
+                      Quick 1-Click Role Login
                     </span>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          setUsername('farmer');
+                          setUsername('farmer@agrislot.com');
                           setPassword('farmer123');
                         }}
-                        className="py-1.5 px-2 rounded-lg bg-mint-foam hover:bg-mint-light border border-navy-border text-forest font-bold text-[11px] shadow-sm active:translate-y-0.5"
+                        className="py-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-600 text-emerald-950 font-bold text-xs shadow-sm flex items-center justify-center gap-1.5"
                       >
-                        Demo Farmer
+                        🌾 Farmer Login
                       </button>
                       <button
                         type="button"
                         onClick={() => {
-                          setUsername('admin');
+                          setUsername('admin@agrislot.com');
                           setPassword('admin123');
                         }}
-                        className="py-1.5 px-2 rounded-lg bg-saffron-light hover:bg-saffron border border-navy-border text-navy-border font-bold text-[11px] shadow-sm active:translate-y-0.5"
+                        className="py-2 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border-2 border-amber-600 text-navy-border font-bold text-xs shadow-sm flex items-center justify-center gap-1.5"
                       >
-                        Mandi Officer (Admin)
+                        🛡️ Admin Login
                       </button>
                     </div>
                   </div>
