@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: #F8FAF8;
+  --navy-border: #0F2B20;
+}
+
+body {
+  background-color: #F8FAF8;
+  background-image: radial-gradient(#064E3B 0.75px, transparent 0.75px);
+  background-size: 22px 22px;
+  color: #0F2B20;
+  min-height: 100vh;
+}
+
+.ticket-rip {
+  background-image: radial-gradient(circle at 0 center, transparent 9px, white 9.5px),
+                    radial-gradient(circle at 100% center, transparent 9px, white 9.5px);
+  background-repeat: no-repeat;
+}
+
+.ticket-edge-dashed {
+  border-right: 2px dashed #CBD5E1;
+}
+
+.polaroid-tape {
+  position: absolute;
+  width: 65px;
+  height: 20px;
+  background: rgba(254, 243, 199, 0.85);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-3deg);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.stamp-rotate {
+  transform: rotate(-6deg);
+}
+
+.stamp-rotate-right {
+  transform: rotate(4deg);
+}
+
+@keyframes pulse-gentle {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.75; }
+}
+
+.pulse-dot {
+  animation: pulse-gentle 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@media print {
+  body {
+    background: white !important;
+    background-image: none !important;
+  }
+  aside, header, footer {
+    display: none !important;
+  }
+  .lg\:pl-64 {
+    padding-left: 0 !important;
+  }
+}
