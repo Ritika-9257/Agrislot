@@ -21,4 +21,19 @@ router.post(
   TransactionController.createTransaction
 );
 
+// Admin creation for Traders and Warehouses
+router.post(
+  '/traders',
+  authenticate,
+  requireRole('Admin', 'Mandi_Officer'),
+  TransactionController.createTrader
+);
+
+router.post(
+  '/warehouses',
+  authenticate,
+  requireRole('Admin', 'Mandi_Officer'),
+  TransactionController.createWarehouse
+);
+
 module.exports = router;

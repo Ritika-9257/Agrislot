@@ -1,5 +1,14 @@
+# Dependencies
 node_modules/
+
+# Environment files
 .env
+.env.*
+!.env.example
+*.env
+
+# System & Logs
 .DS_Store
+Thumbs.db
 coverage/
 *.log

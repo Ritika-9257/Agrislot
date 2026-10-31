@@ -1,7 +1,7 @@
 const db = require('../config/database');
 
-const USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status, Google_Sub, Email, Full_Name, Avatar_Url, Farmer_ID';
-const LEGACY_USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status';
+const USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status, Google_Sub, Email, Full_Name, Avatar_Url, Farmer_ID, Created_At, Last_Login';
+const LEGACY_USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status, Created_At, Last_Login';
 
 const UserRepository = {
   async findByUsername(username) {

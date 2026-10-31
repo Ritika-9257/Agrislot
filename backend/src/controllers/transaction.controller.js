@@ -83,12 +83,38 @@ const TransactionController = {
     }
   },
 
+  async createTrader(req, res, next) {
+    try {
+      const trader = await TransactionService.createTrader(req.body);
+      return successResponse(res, {
+        statusCode: 201,
+        message: 'Trader created successfully',
+        data: trader
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async getAllWarehouses(req, res, next) {
     try {
       const warehouses = await TransactionService.getAllWarehouses();
       return successResponse(res, {
         message: 'Warehouses fetched successfully',
         data: warehouses
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async createWarehouse(req, res, next) {
+    try {
+      const warehouse = await TransactionService.createWarehouse(req.body);
+      return successResponse(res, {
+        statusCode: 201,
+        message: 'Warehouse created successfully',
+        data: warehouse
       });
     } catch (err) {
       next(err);

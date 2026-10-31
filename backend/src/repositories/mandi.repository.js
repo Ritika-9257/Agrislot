@@ -57,6 +57,55 @@ const MandiRepository = {
 
     const [rows] = await db.query(sql, params);
     return rows;
+  },
+
+  async create({ Mandi_Name, Location, District, Total_Daily_Capacity_Tons }) {
+    const sql = `
+      INSERT INTO Mandis (Mandi_Name, Location, District, Total_Daily_Capacity_Tons)
+      VALUES (?, ?, ?, ?)
+    `;
+    const [result] = await db.query(sql, [
+      Mandi_Name,
+      Location,
+      District,
+      Total_Daily_Capacity_Tons || 500.00
+    ]);
+    return result.insertId;
+  },
+
+  async update(mandiId, { Mandi_Name, Location, District, Total_Daily_Capacity_Tons }) {
+    const updates = [];
+    const params = [];
+
+    if (Mandi_Name !== undefined) {
+      updates.push('Mandi_Name = ?');
+      params.push(Mandi_Name);
+    }
+    if (Location !== undefined) {
+      updates.push('Location = ?');
+      params.push(Location);
+    }
+    if (District !== undefined) {
+      updates.push('District = ?');
+      params.push(District);
+    }
+    if (Total_Daily_Capacity_Tons !== undefined) {
+      updates.push('Total_Daily_Capacity_Tons = ?');
+      params.push(Total_Daily_Capacity_Tons);
+    }
+
+    if (updates.length === 0) return true;
+
+    params.push(mandiId);
+    const sql = `UPDATE Mandis SET ${updates.join(', ')} WHERE Mandi_ID = ?`;
+    const [result] = await db.query(sql, params);
+    return result.affectedRows > 0;
+  },
+
+  async delete(mandiId) {
+    const sql = 'DELETE FROM Mandis WHERE Mandi_ID = ?';
+    const [result] = await db.query(sql, [mandiId]);
+    return result.affectedRows > 0;
   }
 };
 

@@ -138,6 +138,56 @@ const SlotRepository = {
     `;
     const [rows] = await db.query(sql);
     return rows;
+  },
+
+  async create({ Mandi_ID, Slot_Date, Start_Time, End_Time, Max_Capacity_Tons }) {
+    const sql = `
+      INSERT INTO Slots (Mandi_ID, Slot_Date, Start_Time, End_Time, Max_Capacity_Tons, Booked_Capacity_Tons)
+      VALUES (?, ?, ?, ?, ?, 0.00)
+    `;
+    const [result] = await db.query(sql, [
+      Mandi_ID,
+      Slot_Date,
+      Start_Time,
+      End_Time,
+      Max_Capacity_Tons || 50.00
+    ]);
+    return this.findById(result.insertId);
+  },
+
+  async update(slotId, updateData) {
+    const fields = [];
+    const values = [];
+
+    if (updateData.Slot_Date !== undefined) {
+      fields.push('Slot_Date = ?');
+      values.push(updateData.Slot_Date);
+    }
+    if (updateData.Start_Time !== undefined) {
+      fields.push('Start_Time = ?');
+      values.push(updateData.Start_Time);
+    }
+    if (updateData.End_Time !== undefined) {
+      fields.push('End_Time = ?');
+      values.push(updateData.End_Time);
+    }
+    if (updateData.Max_Capacity_Tons !== undefined) {
+      fields.push('Max_Capacity_Tons = ?');
+      values.push(updateData.Max_Capacity_Tons);
+    }
+
+    if (fields.length === 0) return this.findById(slotId);
+
+    values.push(slotId);
+    const sql = `UPDATE Slots SET ${fields.join(', ')} WHERE Slot_ID = ?`;
+    await db.query(sql, values);
+    return this.findById(slotId);
+  },
+
+  async delete(slotId) {
+    const sql = 'DELETE FROM Slots WHERE Slot_ID = ?';
+    const [result] = await db.query(sql, [slotId]);
+    return result.affectedRows > 0;
   }
 };
 

@@ -4,7 +4,7 @@ const { successResponse } = require('../utils/apiResponse');
 const BookingController = {
   async createBooking(req, res, next) {
     try {
-      const booking = await BookingService.createBooking(req.body);
+      const booking = await BookingService.createBooking(req.body, req.user);
       return successResponse(res, {
         statusCode: 201,
         message: 'Booking created successfully',

@@ -75,8 +75,26 @@ const TransactionService = {
     return TransactionRepository.findAllTraders();
   },
 
+  async createTrader({ Name, License_No, Phone }) {
+    if (!Name || !License_No || !Phone) {
+      throw new AppError('Name, License_No, and Phone are required for Trader', 400, 'VALIDATION_ERROR');
+    }
+    return TransactionRepository.createTrader({ Name, License_No, Phone });
+  },
+
   async getAllWarehouses() {
     return TransactionRepository.findAllWarehouses();
+  },
+
+  async createWarehouse({ Mandi_ID, Warehouse_Type, Total_Capacity }) {
+    if (!Mandi_ID || !Warehouse_Type || !Total_Capacity) {
+      throw new AppError('Mandi_ID, Warehouse_Type, and Total_Capacity are required for Warehouse', 400, 'VALIDATION_ERROR');
+    }
+    const validTypes = ['Dry Storage', 'Cold Storage', 'Silo'];
+    if (!validTypes.includes(Warehouse_Type)) {
+      throw new AppError(`Invalid Warehouse_Type. Must be one of: ${validTypes.join(', ')}`, 400, 'INVALID_WAREHOUSE_TYPE');
+    }
+    return TransactionRepository.createWarehouse({ Mandi_ID, Warehouse_Type, Total_Capacity });
   }
 };
 

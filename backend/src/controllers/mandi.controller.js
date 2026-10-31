@@ -47,6 +47,45 @@ const MandiController = {
     } catch (err) {
       next(err);
     }
+  },
+
+  async createMandi(req, res, next) {
+    try {
+      const mandi = await MandiService.createMandi(req.body);
+      return successResponse(res, {
+        statusCode: 201,
+        message: 'Mandi created successfully',
+        data: mandi
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateMandi(req, res, next) {
+    try {
+      const mandiId = parseInt(req.params.id, 10);
+      const mandi = await MandiService.updateMandi(mandiId, req.body);
+      return successResponse(res, {
+        message: 'Mandi updated successfully',
+        data: mandi
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async deleteMandi(req, res, next) {
+    try {
+      const mandiId = parseInt(req.params.id, 10);
+      const result = await MandiService.deleteMandi(mandiId);
+      return successResponse(res, {
+        message: 'Mandi deleted successfully',
+        data: result
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 };
 

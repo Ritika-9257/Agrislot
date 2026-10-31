@@ -44,6 +44,45 @@ const SlotController = {
     } catch (err) {
       next(err);
     }
+  },
+
+  async createSlot(req, res, next) {
+    try {
+      const slot = await SlotService.createSlot(req.body);
+      return successResponse(res, {
+        statusCode: 201,
+        message: 'Slot created successfully',
+        data: slot
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateSlot(req, res, next) {
+    try {
+      const slotId = parseInt(req.params.id, 10);
+      const slot = await SlotService.updateSlot(slotId, req.body);
+      return successResponse(res, {
+        message: 'Slot updated successfully',
+        data: slot
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async deleteSlot(req, res, next) {
+    try {
+      const slotId = parseInt(req.params.id, 10);
+      await SlotService.deleteSlot(slotId);
+      return successResponse(res, {
+        message: 'Slot deleted successfully',
+        data: null
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 };
 

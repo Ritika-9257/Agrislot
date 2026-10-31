@@ -19,6 +19,45 @@ const UserRepository = {
     }
   },
 
+  async findByUsernameOrIdentifier(identifier) {
+    if (!identifier) return null;
+    const cleanId = String(identifier).trim();
+    try {
+      const sql = `
+        SELECT 
+          u.User_ID, u.Username, u.Password_Hash, u.User_Role, u.Account_Status,
+          u.Google_Sub, u.Email, u.Full_Name, u.Avatar_Url, u.Farmer_ID,
+          u.Created_At, u.Last_Login,
+          f.Phone AS Farmer_Phone
+        FROM User_Login u
+        LEFT JOIN Farmers f ON u.Farmer_ID = f.Farmer_ID
+        WHERE u.Username = ? OR f.Phone = ? OR (u.Email IS NOT NULL AND u.Email = ?)
+        LIMIT 1
+      `;
+      const [rows] = await db.query(sql, [cleanId, cleanId, cleanId.toLowerCase()]);
+      return rows[0] || null;
+    } catch (err) {
+      if (err.code === 'ER_BAD_FIELD_ERROR') {
+        return this.findByUsername(cleanId);
+      }
+      throw err;
+    }
+  },
+
+  async findByFarmerId(farmerId) {
+    if (!farmerId) return null;
+    try {
+      const sql = `SELECT ${USER_COLUMNS} FROM User_Login WHERE Farmer_ID = ? LIMIT 1`;
+      const [rows] = await db.query(sql, [farmerId]);
+      return rows[0] || null;
+    } catch (err) {
+      if (err.code === 'ER_BAD_FIELD_ERROR') {
+        return null;
+      }
+      throw err;
+    }
+  },
+
   async findById(userId) {
     try {
       const sql = `SELECT ${USER_COLUMNS} FROM User_Login WHERE User_ID = ?`;
@@ -62,10 +101,32 @@ const UserRepository = {
     }
   },
 
-  async create({ username, passwordHash, role = 'Farmer', status = 'Active' }) {
-    const sql = 'INSERT INTO User_Login (Username, Password_Hash, User_Role, Account_Status) VALUES (?, ?, ?, ?)';
-    const [result] = await db.query(sql, [username, passwordHash, role, status]);
-    return result.insertId;
+  async create({ username, passwordHash, role = 'Farmer', status = 'Active', fullName = null, email = null, farmerId = null }, connection = null) {
+    const executor = connection || db;
+    try {
+      const sql = `
+        INSERT INTO User_Login 
+        (Username, Password_Hash, User_Role, Account_Status, Full_Name, Email, Farmer_ID)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `;
+      const [result] = await executor.query(sql, [
+        username,
+        passwordHash,
+        role,
+        status,
+        fullName || null,
+        email ? email.toLowerCase().trim() : null,
+        farmerId || null
+      ]);
+      return result.insertId;
+    } catch (err) {
+      if (err.code === 'ER_BAD_FIELD_ERROR') {
+        const fallbackSql = 'INSERT INTO User_Login (Username, Password_Hash, User_Role, Account_Status) VALUES (?, ?, ?, ?)';
+        const [result] = await executor.query(fallbackSql, [username, passwordHash, role, status]);
+        return result.insertId;
+      }
+      throw err;
+    }
   },
 
   async createGoogleUser({
@@ -143,6 +204,11 @@ const UserRepository = {
   async updateLastLogin(userId) {
     const sql = 'UPDATE User_Login SET Last_Login = CURRENT_TIMESTAMP WHERE User_ID = ?';
     await db.query(sql, [userId]);
+  },
+
+  async updatePassword(userId, passwordHash) {
+    const sql = 'UPDATE User_Login SET Password_Hash = ? WHERE User_ID = ?';
+    await db.query(sql, [passwordHash, userId]);
   },
 
   async linkFarmer(userId, farmerId) {

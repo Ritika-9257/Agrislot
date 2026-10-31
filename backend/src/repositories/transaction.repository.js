@@ -127,6 +127,12 @@ const TransactionRepository = {
     return rows;
   },
 
+  async createTrader({ Name, License_No, Phone }) {
+    const sql = 'INSERT INTO Traders (Name, License_No, Phone) VALUES (?, ?, ?)';
+    const [result] = await db.query(sql, [Name, License_No, Phone]);
+    return { Trader_ID: result.insertId, Name, License_No, Phone };
+  },
+
   async findAllWarehouses() {
     const sql = `
       SELECT 
@@ -143,6 +149,32 @@ const TransactionRepository = {
     `;
     const [rows] = await db.query(sql);
     return rows;
+  },
+
+  async createWarehouse({ Mandi_ID, Warehouse_Type, Total_Capacity }) {
+    const sql = `
+      INSERT INTO Warehouses (Mandi_ID, Warehouse_Type, Total_Capacity, Occupied_Capacity)
+      VALUES (?, ?, ?, 0.00)
+    `;
+    const [result] = await db.query(sql, [
+      Mandi_ID,
+      Warehouse_Type,
+      Total_Capacity
+    ]);
+    const [rows] = await db.query(`
+      SELECT 
+        w.Warehouse_ID,
+        w.Mandi_ID,
+        m.Mandi_Name,
+        w.Warehouse_Type,
+        w.Total_Capacity,
+        w.Occupied_Capacity,
+        (w.Total_Capacity - w.Occupied_Capacity) AS Available_Capacity
+      FROM Warehouses w
+      JOIN Mandis m ON w.Mandi_ID = m.Mandi_ID
+      WHERE w.Warehouse_ID = ?
+    `, [result.insertId]);
+    return rows[0];
   }
 };
 

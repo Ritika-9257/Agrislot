@@ -45,6 +45,9 @@ router.patch(
 // Farmer Directory
 router.get('/farmers', FarmerController.getAllFarmers);
 router.get('/farmers/:id', FarmerController.getFarmerById);
+router.post('/farmers', requireActiveRole('Admin'), FarmerController.createFarmerAdmin);
+router.patch('/farmers/:id', requireActiveRole('Admin'), FarmerController.updateFarmerAdmin);
+router.delete('/farmers/:id', requireActiveRole('Admin'), FarmerController.deleteFarmerAdmin);
 
 // Slot & Mandi Utilization
 router.get('/slots/utilization', SlotController.getUtilization);

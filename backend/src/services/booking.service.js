@@ -3,6 +3,7 @@ const BookingRepository = require('../repositories/booking.repository');
 const SlotRepository = require('../repositories/slot.repository');
 const FarmerRepository = require('../repositories/farmer.repository');
 const ProduceRepository = require('../repositories/produce.repository');
+const MandiRepository = require('../repositories/mandi.repository');
 const { generateToken } = require('../utils/tokenGenerator');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
@@ -13,46 +14,96 @@ const BookingService = {
   /**
    * Concurrency-safe atomic booking creation with row-level locking
    */
-  async createBooking({ Farmer_ID, Slot_ID, Produce_ID, Estimated_Weight_Tons }) {
-    const requestedWeight = parseFloat(Estimated_Weight_Tons);
+  async createBooking(bookingData, requestingUser = null) {
+    if (!requestingUser) {
+      throw new AppError('Authentication required to create a booking', 401, 'UNAUTHORIZED');
+    }
+
+    // 1. Determine effective Farmer_ID:
+    // If Admin/Mandi_Officer, allow bookingData.Farmer_ID (or fallback to requestingUser.farmerId)
+    // For regular farmers: derive Farmer_ID strictly from requestingUser.farmerId (reject frontend-supplied Farmer_ID)
+    let effectiveFarmerId;
+    if (requestingUser.role === 'Admin' || requestingUser.role === 'Mandi_Officer') {
+      effectiveFarmerId = bookingData.Farmer_ID || requestingUser.farmerId;
+      if (!effectiveFarmerId) {
+        throw new AppError('Farmer ID is required for administrative booking', 400, 'FARMER_ID_REQUIRED');
+      }
+    } else {
+      effectiveFarmerId = requestingUser.farmerId;
+      if (!effectiveFarmerId) {
+        throw new AppError('Authenticated user does not have an associated Farmer ID', 403, 'FORBIDDEN');
+      }
+    }
+
+    const requestedWeight = parseFloat(
+      bookingData.Estimated_Weight_Tons !== undefined 
+        ? bookingData.Estimated_Weight_Tons 
+        : (bookingData.estimatedWeightTons !== undefined ? bookingData.estimatedWeightTons : bookingData.weight)
+    );
     if (isNaN(requestedWeight) || requestedWeight <= 0) {
       throw new AppError('Estimated weight must be a positive number', 400, 'INVALID_WEIGHT');
     }
+    if (requestedWeight > 500) {
+      throw new AppError('Estimated weight exceeds single slot transaction limit of 500 tons', 400, 'INVALID_WEIGHT');
+    }
 
-    // 1. Verify existence of Farmer and Produce before starting connection transaction
-    const farmer = await FarmerRepository.findById(Farmer_ID);
+    const slotId = parseInt(bookingData.Slot_ID || bookingData.slotId, 10);
+    const produceId = parseInt(bookingData.Produce_ID || bookingData.produceId, 10);
+    const mandiId = (bookingData.Mandi_ID || bookingData.mandiId) ? parseInt(bookingData.Mandi_ID || bookingData.mandiId, 10) : null;
+
+    if (!slotId || isNaN(slotId)) {
+      throw new AppError('Valid Slot ID is required', 400, 'INVALID_SLOT_ID');
+    }
+    if (!produceId || isNaN(produceId)) {
+      throw new AppError('Valid Produce ID is required', 400, 'INVALID_PRODUCE_ID');
+    }
+
+    // 2. Verify existence of Farmer, Produce and Mandi (if supplied) before starting transaction
+    const farmer = await FarmerRepository.findById(effectiveFarmerId);
     if (!farmer) {
-      throw new AppError(`Farmer with ID ${Farmer_ID} does not exist`, 404, 'FARMER_NOT_FOUND');
+      throw new AppError(`Farmer with ID ${effectiveFarmerId} does not exist`, 404, 'FARMER_NOT_FOUND');
     }
 
-    const produce = await ProduceRepository.findById(Produce_ID);
+    const produce = await ProduceRepository.findById(produceId);
     if (!produce) {
-      throw new AppError(`Produce with ID ${Produce_ID} does not exist`, 404, 'PRODUCE_NOT_FOUND');
+      throw new AppError(`Produce with ID ${produceId} does not exist`, 404, 'PRODUCE_NOT_FOUND');
     }
 
-    // 2. Open dedicated database connection for atomic transaction
+    if (mandiId) {
+      const mandi = await MandiRepository.findById(mandiId);
+      if (!mandi) {
+        throw new AppError(`Mandi with ID ${mandiId} does not exist`, 404, 'MANDI_NOT_FOUND');
+      }
+    }
+
+    // 3. Open dedicated database connection for atomic transaction
     const connection = await db.getConnection();
 
     try {
       await connection.beginTransaction();
 
-      // 3. Acquire row-level exclusive lock on the slot (SELECT ... FOR UPDATE)
-      const slot = await SlotRepository.findByIdForUpdate(Slot_ID, connection);
+      // 4. Acquire row-level exclusive lock on the slot (SELECT ... FOR UPDATE)
+      const slot = await SlotRepository.findByIdForUpdate(slotId, connection);
       if (!slot) {
-        throw new AppError(`Slot with ID ${Slot_ID} does not exist`, 404, 'SLOT_NOT_FOUND');
+        throw new AppError(`Slot with ID ${slotId} does not exist`, 404, 'SLOT_NOT_FOUND');
       }
 
-      // 4. Validate slot date (cannot book past date)
-      const todayStr = new Date().toISOString().split('T')[0];
+      // 5. Validate that selected slot belongs to the selected mandi (if mandiId was provided)
+      if (mandiId && Number(slot.Mandi_ID) !== Number(mandiId)) {
+        throw new AppError(`Selected slot ${slotId} does not belong to Mandi ${mandiId}`, 400, 'SLOT_MANDI_MISMATCH');
+      }
+
+      // 6. Validate slot date (cannot book past date)
+      const todayLocalStr = new Date().toLocaleDateString('en-CA');
       const slotDateStr = typeof slot.Slot_Date === 'string' 
         ? slot.Slot_Date.split('T')[0] 
         : new Date(slot.Slot_Date).toISOString().split('T')[0];
 
-      if (slotDateStr < todayStr) {
+      if (slotDateStr < todayLocalStr) {
         throw new AppError(`Cannot book slot for past date (${slotDateStr})`, 400, 'PAST_DATE_NOT_BOOKABLE');
       }
 
-      // 5. Concurrency & capacity check
+      // 7. Concurrency & capacity check
       const maxCapacity = parseFloat(slot.Max_Capacity_Tons);
       const bookedCapacity = parseFloat(slot.Booked_Capacity_Tons);
       const remainingCapacity = maxCapacity - bookedCapacity;
@@ -65,7 +116,7 @@ const BookingService = {
         );
       }
 
-      // 6. Generate collision-resistant digital gate-pass token with retry mechanism
+      // 8. Generate collision-resistant digital gate-pass token with retry mechanism
       let tokenNumber = null;
       let bookingId = null;
       let attempts = 0;
@@ -76,9 +127,9 @@ const BookingService = {
         tokenNumber = generateToken('AG-T');
         try {
           bookingId = await BookingRepository.create({
-            Farmer_ID,
-            Slot_ID,
-            Produce_ID,
+            Farmer_ID: effectiveFarmerId,
+            Slot_ID: slotId,
+            Produce_ID: produceId,
             Estimated_Weight_Tons: requestedWeight,
             Token_Number: tokenNumber
           }, connection);
@@ -95,16 +146,19 @@ const BookingService = {
         throw new AppError('Unable to generate unique gate pass token after several attempts', 500, 'TOKEN_GENERATION_FAILED');
       }
 
-      // 7. Atomically increment slot booked capacity
-      await SlotRepository.incrementBookedCapacity(Slot_ID, requestedWeight, connection);
+      // 9. Atomically increment slot booked capacity
+      await SlotRepository.incrementBookedCapacity(slotId, requestedWeight, connection);
 
-      // 8. Commit atomic transaction
+      // 10. Commit atomic transaction
       await connection.commit();
 
-      logger.info(`Booking created successfully: ID=${bookingId}, Token=${tokenNumber}, Weight=${requestedWeight}T`);
+      logger.info(`Booking created successfully: ID=${bookingId}, Token=${tokenNumber}, Farmer=${effectiveFarmerId}, Weight=${requestedWeight}T`);
+
+      // 11. Fetch full joined gate pass details after successful commit
+      const completeBooking = await BookingRepository.findById(bookingId);
 
       NotificationService.notify({
-        farmerId: Farmer_ID,
+        farmerId: effectiveFarmerId,
         title: `Gate-Pass ${tokenNumber} Confirmed`,
         message: `Arrival window reserved for ${requestedWeight}T ${produce.Produce_Name}. Gate-pass token: ${tokenNumber}`,
         type: 'BOOKING_CONFIRMED',
@@ -113,16 +167,22 @@ const BookingService = {
       });
 
       return {
+        ...completeBooking,
         bookingId,
         tokenNumber,
-        bookingStatus: 'Confirmed',
+        Gate_Pass_Token: tokenNumber,
+        bookingStatus: completeBooking ? completeBooking.Booking_Status : 'Confirmed',
         estimatedWeightTons: requestedWeight,
-        farmerId: Farmer_ID,
+        farmerId: effectiveFarmerId,
         farmerName: farmer.Name,
-        slotId: Slot_ID,
+        slotId: slotId,
         slotDate: slotDateStr,
-        produceId: Produce_ID,
-        produceName: produce.Produce_Name
+        startTime: slot.Start_Time,
+        endTime: slot.End_Time,
+        produceId: produceId,
+        produceName: produce.Produce_Name,
+        mandiId: slot.Mandi_ID,
+        mandiName: completeBooking ? completeBooking.Mandi_Name : undefined
       };
     } catch (err) {
       await connection.rollback();
@@ -136,6 +196,10 @@ const BookingService = {
    * Concurrency-safe cancellation releasing capacity exactly once
    */
   async cancelBooking(bookingId, requestingUser = null) {
+    if (!requestingUser) {
+      throw new AppError('Authentication required to cancel a booking', 401, 'UNAUTHORIZED');
+    }
+
     const connection = await db.getConnection();
 
     try {
@@ -147,11 +211,12 @@ const BookingService = {
         throw new AppError(`Booking with ID ${bookingId} not found`, 404, 'BOOKING_NOT_FOUND');
       }
 
-      // Authorization check: If caller is authenticated as a Farmer, they can only cancel their own booking
-      if (requestingUser && requestingUser.role === 'Farmer' && requestingUser.farmerId) {
-        if (booking.Farmer_ID !== requestingUser.farmerId) {
-          throw new AppError('Forbidden: You can only cancel your own bookings', 403, 'FORBIDDEN');
-        }
+      // Authorization check: Only the booking owner or authorized administrator may cancel
+      const isAdminOrOfficer = requestingUser.role === 'Admin' || requestingUser.role === 'Mandi_Officer';
+      const isOwner = requestingUser.farmerId && Number(booking.Farmer_ID) === Number(requestingUser.farmerId);
+
+      if (!isAdminOrOfficer && !isOwner) {
+        throw new AppError('Forbidden: You can only cancel your own bookings', 403, 'FORBIDDEN');
       }
 
       // Validate cancellation eligibility

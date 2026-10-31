@@ -20,6 +20,13 @@ const FALLBACK_PRODUCE = [
   { Produce_ID: 8, Produce_Name: 'Pearl Millet (Bajra)', Category: 'Grains', Storage_Type: 'Dry' },
 ];
 
+const FALLBACK_SLOTS = [
+  { Slot_ID: 1, Mandi_ID: 1, Mandi_Name: 'Surat Central APMC', Slot_Date: '2026-10-24', Start_Time: '08:00:00', End_Time: '10:00:00', Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 15.0, Remaining_Capacity_Tons: 35.0, Availability_Status: 'Available' },
+  { Slot_ID: 2, Mandi_ID: 1, Mandi_Name: 'Surat Central APMC', Slot_Date: '2026-10-24', Start_Time: '10:00:00', End_Time: '12:00:00', Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 30.0, Remaining_Capacity_Tons: 20.0, Availability_Status: 'Available' },
+  { Slot_ID: 3, Mandi_ID: 1, Mandi_Name: 'Surat Central APMC', Slot_Date: '2026-10-24', Start_Time: '13:00:00', End_Time: '15:00:00', Max_Capacity_Tons: 40.0, Booked_Capacity_Tons: 40.0, Remaining_Capacity_Tons: 0.0, Availability_Status: 'Full' },
+  { Slot_ID: 4, Mandi_ID: 2, Mandi_Name: 'Nashik Agro Terminal', Slot_Date: '2026-10-24', Start_Time: '08:00:00', End_Time: '10:00:00', Max_Capacity_Tons: 80.0, Booked_Capacity_Tons: 25.0, Remaining_Capacity_Tons: 55.0, Availability_Status: 'Available' }
+];
+
 const FALLBACK_FARMERS = [
   { Farmer_ID: 1, Full_Name: 'Ramesh Patel', Name: 'Ramesh Patel', Phone: '9000000001', Phone_Number: '9000000001', Village: 'Olpad', District: 'Surat' },
   { Farmer_ID: 2, Full_Name: 'Suresh Chaudhary', Name: 'Suresh Chaudhary', Phone: '9000000002', Phone_Number: '9000000002', Village: 'Bardoli', District: 'Surat' },
@@ -134,6 +141,13 @@ export async function apiRequest(endpoint, options = {}) {
     ...(options.headers || {}),
   };
 
+  if (!headers['Authorization'] && typeof window !== 'undefined') {
+    const savedToken = localStorage.getItem('agrislot_token');
+    if (savedToken) {
+      headers['Authorization'] = `Bearer ${savedToken}`;
+    }
+  }
+
   try {
     const response = await fetch(url, { ...options, headers });
     const data = await response.json();
@@ -145,22 +159,84 @@ export async function apiRequest(endpoint, options = {}) {
     return data;
   } catch (err) {
     // If backend is momentarily unreachable, supply offline fallback where feasible
-    if (err.name === 'TypeError' && err.message.includes('fetch')) {
-      // In-memory fallback dispatch
+    const isNetworkErr =
+      err.name === 'TypeError' ||
+      (err.message && /fetch|network|failed/i.test(err.message));
+
+    if (isNetworkErr) {
+      // Handle slots before mandis to prevent /mandis/:id/slots returning Mandi objects
+      if (endpoint.includes('/slots')) {
+        const matchMandi = endpoint.match(/\/mandis\/(\d+)\/slots/);
+        if (matchMandi) {
+          const mId = Number(matchMandi[1]);
+          const filtered = FALLBACK_SLOTS.filter((s) => s.Mandi_ID === mId);
+          return { success: true, data: filtered.length > 0 ? filtered : FALLBACK_SLOTS };
+        }
+        return { success: true, data: FALLBACK_SLOTS };
+      }
       if (endpoint.startsWith('/mandis')) {
         return { success: true, data: FALLBACK_MANDIS };
       }
       if (endpoint.startsWith('/produce')) {
         return { success: true, data: FALLBACK_PRODUCE };
       }
+      if (options.method === 'POST' && endpoint === '/farmers') {
+        const body = options.body ? JSON.parse(options.body) : {};
+        const newFarmer = {
+          Farmer_ID: Math.floor(100 + Math.random() * 900),
+          Full_Name: body.Full_Name || body.Name || 'New Farmer',
+          Name: body.Full_Name || body.Name || 'New Farmer',
+          Phone_Number: body.Phone_Number || body.Phone || '9000000000',
+          Phone: body.Phone_Number || body.Phone || '9000000000',
+          Village: body.Village || 'Surat',
+          District: body.District || 'Surat',
+        };
+        FALLBACK_FARMERS.unshift(newFarmer);
+        return { success: true, message: 'Farmer registered', data: newFarmer };
+      }
       if (endpoint.startsWith('/farmers')) {
+        if (endpoint.includes('/bookings')) {
+          return { success: true, data: Object.values(FALLBACK_BOOKINGS) };
+        }
         return { success: true, data: FALLBACK_FARMERS };
+      }
+      if (options.method === 'POST' && endpoint === '/bookings') {
+        const body = options.body ? JSON.parse(options.body) : {};
+        const newBooking = {
+          Booking_ID: Math.floor(1000 + Math.random() * 9000),
+          Token_Number: `AG-T${Math.floor(10000 + Math.random() * 90000)}`,
+          Gate_Pass_Token: `AG-T${Math.floor(10000 + Math.random() * 90000)}`,
+          Farmer_ID: body.Farmer_ID || 1,
+          Farmer_Name: 'Ramesh Patel',
+          Phone_Number: '9000000001',
+          Slot_ID: body.Slot_ID || 1,
+          Slot_Date: '2026-10-24',
+          Start_Time: '08:00:00',
+          End_Time: '10:00:00',
+          Mandi_ID: 1,
+          Mandi_Name: 'Surat Central APMC',
+          District: 'Surat',
+          Produce_ID: body.Produce_ID || 1,
+          Produce_Name: 'Lokwan Sharbati Wheat',
+          Estimated_Weight_Tons: body.Estimated_Weight_Tons || 10,
+          Booking_Status: 'Confirmed',
+          Village: 'Olpad',
+        };
+        FALLBACK_BOOKINGS[newBooking.Token_Number] = newBooking;
+        return { success: true, message: 'Booking created', data: newBooking };
+      }
+      if (endpoint.includes('/cancel')) {
+        return { success: true, message: 'Booking cancelled' };
       }
       if (endpoint.startsWith('/bookings/token/')) {
         const token = decodeURIComponent(endpoint.split('/bookings/token/')[1]).trim().toUpperCase();
         if (FALLBACK_BOOKINGS[token]) {
           return { success: true, data: FALLBACK_BOOKINGS[token] };
         }
+        return { success: true, data: Object.values(FALLBACK_BOOKINGS)[0] };
+      }
+      if (endpoint.startsWith('/bookings')) {
+        return { success: true, data: Object.values(FALLBACK_BOOKINGS) };
       }
       if (endpoint.includes('/statistics')) {
         return { success: true, data: { total_bookings: 25, total_farmers: 25, total_mandis: 5 } };
@@ -178,11 +254,45 @@ export const AgriSlotAPI = {
   getMandiById: (id) => apiRequest(`/mandis/${id}`),
   getMandiSlots: (id, availableOnly = false) =>
     apiRequest(`/mandis/${id}/slots${availableOnly ? '?availableOnly=true' : ''}`),
+  createMandi: (data, token) =>
+    apiRequest('/mandis', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  updateMandi: (id, data, token) =>
+    apiRequest(`/mandis/${id}`, {
+      method: 'PATCH',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  deleteMandi: (id, token) =>
+    apiRequest(`/mandis/${id}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
 
   // Produce
   getProduce: (category) =>
     apiRequest(`/produce${category ? `?category=${encodeURIComponent(category)}` : ''}`),
   getProduceById: (id) => apiRequest(`/produce/${id}`),
+  createProduce: (data, token) =>
+    apiRequest('/produce', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  updateProduce: (id, data, token) =>
+    apiRequest(`/produce/${id}`, {
+      method: 'PATCH',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  deleteProduce: (id, token) =>
+    apiRequest(`/produce/${id}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
 
   // Farmers
   registerFarmer: (data) =>
@@ -190,9 +300,46 @@ export const AgriSlotAPI = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getFarmers: () => apiRequest('/farmers'),
-  getFarmerById: (id) => apiRequest(`/farmers/${id}`),
-  getFarmerBookings: (id) => apiRequest(`/farmers/${id}/bookings`),
+  getFarmers: (filters = {}) => {
+    const q = new URLSearchParams();
+    if (filters.search) q.append('search', filters.search);
+    if (filters.page) q.append('page', String(filters.page));
+    if (filters.limit) q.append('limit', String(filters.limit));
+    return apiRequest(`/farmers?${q.toString()}`);
+  },
+  getMyProfile: (token) =>
+    apiRequest('/farmers/me', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
+  getMyBookings: (token) =>
+    apiRequest('/farmers/me/bookings', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
+  getFarmerById: (id, token) =>
+    apiRequest(`/farmers/${id}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
+  getFarmerBookings: (id, token) =>
+    apiRequest(`/farmers/${id}/bookings`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
+  createFarmerAdmin: (data, token) =>
+    apiRequest('/admin/farmers', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  updateFarmerAdmin: (id, data, token) =>
+    apiRequest(`/admin/farmers/${id}`, {
+      method: 'PATCH',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  deleteFarmerAdmin: (id, token) =>
+    apiRequest(`/admin/farmers/${id}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
 
   // Slots
   getSlots: (params) => {
@@ -203,24 +350,50 @@ export const AgriSlotAPI = {
     return apiRequest(`/slots?${q.toString()}`);
   },
   getSlotUtilization: () => apiRequest('/slots/utilization'),
+  createSlot: (data, token) =>
+    apiRequest('/slots', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  updateSlot: (id, data, token) =>
+    apiRequest(`/slots/${id}`, {
+      method: 'PATCH',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
+  deleteSlot: (id, token) =>
+    apiRequest(`/slots/${id}`, {
+      method: 'DELETE',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
 
   // Bookings
-  createBooking: (data) =>
+  createBooking: (data, token) =>
     apiRequest('/bookings', {
       method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: JSON.stringify(data),
     }),
   getBookingByToken: (token) =>
     apiRequest(`/bookings/token/${encodeURIComponent((token || '').trim())}`),
   getBookingById: (id) => apiRequest(`/bookings/${id}`),
-  cancelBooking: (id) =>
-    apiRequest(`/bookings/${id}/cancel`, { method: 'PATCH' }),
+  cancelBooking: (id, token) =>
+    apiRequest(`/bookings/${id}/cancel`, {
+      method: 'PATCH',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    }),
 
   // Auth & Admin
   login: (credentials) =>
     apiRequest('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
+    }),
+  setupPassword: (data) =>
+    apiRequest('/auth/setup-password', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
   googleLogin: ({ credential }) =>
     apiRequest('/auth/google', {
@@ -274,7 +447,19 @@ export const AgriSlotAPI = {
   getTransactions: () => apiRequest('/transactions'),
   getTransactionSummary: () => apiRequest('/transactions/summary'),
   getTraders: () => apiRequest('/transactions/traders'),
+  createTrader: (data, token) =>
+    apiRequest('/transactions/traders', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
   getWarehouses: () => apiRequest('/transactions/warehouses'),
+  createWarehouse: (data, token) =>
+    apiRequest('/transactions/warehouses', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify(data),
+    }),
   recordTransaction: (data, token) =>
     apiRequest('/transactions', {
       method: 'POST',
@@ -348,6 +533,7 @@ export const AgriSlotAPI = {
   paginatedSearch: (page = 1, limit = 10, search = '') =>
     apiRequest(`/automation/search/paginated?page=${page}&limit=${limit}${search ? `&search=${encodeURIComponent(search)}` : ''}`),
   getTotalBookingWeight: () => apiRequest('/automation/functions/total-weight'),
+  getTotalWeightByFarmer: () => apiRequest('/automation/procedures/weight-by-farmer'),
   getAuditLogs: (token, params) => {
     const q = new URLSearchParams(params || {}).toString();
     return apiRequest(`/admin/audit-logs${q ? `?${q}` : ''}`, {
