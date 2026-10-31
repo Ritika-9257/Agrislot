@@ -21,6 +21,11 @@ const env = {
   DB_CONNECTION_LIMIT: parseInt(process.env.DB_CONNECTION_LIMIT, 10) || 10,
   DB_QUEUE_LIMIT: parseInt(process.env.DB_QUEUE_LIMIT, 10) || 0,
 
+  // Database SSL (for Managed Cloud MySQL: Aiven, DigitalOcean, AWS RDS, Railway, etc.)
+  DB_SSL: process.env.DB_SSL === 'true' || process.env.DB_SSL === '1',
+  DB_SSL_CA: process.env.DB_SSL_CA || null,
+  DB_SSL_CA_PATH: process.env.DB_SSL_CA_PATH || null,
+
   // JWT Security
   JWT_SECRET: process.env.JWT_SECRET || 'agrislot_development_jwt_secret_key_change_in_production_32char',
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '24h',
