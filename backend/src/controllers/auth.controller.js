@@ -29,6 +29,19 @@ const AuthController = {
     }
   },
 
+  async setupPassword(req, res, next) {
+    try {
+      const { phone, aadhaarNo, password } = req.body || {};
+      const result = await AuthService.setupPassword({ phone, aadhaarNo, password });
+      return successResponse(res, {
+        message: result.message,
+        data: result
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async googleLogin(req, res, next) {
     try {
       const { credential, idToken, token } = req.body || {};

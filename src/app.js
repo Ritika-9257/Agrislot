@@ -30,7 +30,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // Global Rate Limiting
 app.use('/api/', apiLimiter);
 
-// Serve Interactive Frontend UI (Lab 10 & Lab 11 + AgriSlot Portal)
+// Serve Interactive Frontend UI (AgriSlot Portal)
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Mount API Routes (Supports both /api/v1 and /api for backwards compatibility)

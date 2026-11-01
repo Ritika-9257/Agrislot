@@ -1,3 +1,4 @@
+const fs = require('fs');
 const mysql = require('mysql2/promise');
 const env = require('./env');
 const logger = require('../utils/logger');
@@ -5,11 +6,44 @@ const logger = require('../utils/logger');
 let pool = null;
 
 /**
+ * Resolves the SSL configuration for MySQL connections.
+ * Returns undefined when SSL is disabled (preserving unencrypted local MySQL connections).
+ * When enabled, strictly enforces rejectUnauthorized: true to protect production connections.
+ *
+ * @param {Object} [config=env] - Environment configuration object
+ * @returns {Object|undefined} Node/TLS SSL options or undefined
+ */
+function getSslConfig(config = env) {
+  if (!config.DB_SSL) {
+    return undefined;
+  }
+
+  const ssl = {
+    rejectUnauthorized: true
+  };
+
+  if (config.DB_SSL_CA && typeof config.DB_SSL_CA === 'string' && config.DB_SSL_CA.trim().length > 0) {
+    // Support multiline PEM passed as single-line string with escaped \n
+    ssl.ca = config.DB_SSL_CA.replace(/\\n/g, '\n').trim();
+  } else if (config.DB_SSL_CA_PATH && typeof config.DB_SSL_CA_PATH === 'string' && config.DB_SSL_CA_PATH.trim().length > 0) {
+    const caPath = config.DB_SSL_CA_PATH.trim();
+    if (fs.existsSync(caPath)) {
+      ssl.ca = fs.readFileSync(caPath, 'utf8');
+    } else {
+      logger.warn(`Configured DB_SSL_CA_PATH file not found: ${caPath}`);
+    }
+  }
+
+  return ssl;
+}
+
+/**
  * Initialize or retrieve the MySQL connection pool
  */
 function getPool() {
   if (!pool) {
-    pool = mysql.createPool({
+    const sslConfig = getSslConfig();
+    const poolConfig = {
       host: env.DB_HOST,
       port: env.DB_PORT,
       user: env.DB_USER,
@@ -21,8 +55,10 @@ function getPool() {
       dateStrings: true,
       timezone: '+05:30', // APMC IST timezone
       enableKeepAlive: true,
-      keepAliveInitialDelay: 0
-    });
+      keepAliveInitialDelay: 0,
+      ...(sslConfig ? { ssl: sslConfig } : {})
+    };
+    pool = mysql.createPool(poolConfig);
   }
   return pool;
 }
@@ -62,7 +98,8 @@ async function testConnection() {
       return {
         connected: true,
         message: 'Database connection successful',
-        database: rows[0]?.current_db || env.DB_NAME
+        database: rows[0]?.current_db || env.DB_NAME,
+        ssl: Boolean(env.DB_SSL)
       };
     } finally {
       connection.release();
@@ -96,6 +133,7 @@ async function closePool() {
 module.exports = {
   getPool,
   setPool,
+  getSslConfig,
   query,
   getConnection,
   testConnection,
