@@ -23,7 +23,7 @@ import { AgriSlotAPI } from '@/lib/api';
 
 function VerifyContent() {
   const searchParams = useSearchParams();
-  const initialToken = searchParams.get('token') || 'AG-T001';
+  const initialToken = searchParams.get('token') || '';
 
   const [tokenInput, setTokenInput] = useState(initialToken);
   const [booking, setBooking] = useState(null);
@@ -69,8 +69,6 @@ function VerifyContent() {
     }
   };
 
-  const sampleTokens = ['AG-T001', 'AG-T002', 'AG-T003', 'AG-T004', 'AG-T005'];
-
   const tokenCode = booking ? (booking.Token_Number || booking.Gate_Pass_Token || booking.tokenNumber || tokenInput) : '';
   const phone = booking ? (booking.Farmer_Phone || booking.Phone_Number || booking.phone || '9822014412') : '';
   const farmerName = booking ? (booking.Farmer_Name || booking.farmerName || 'Registered Producer') : '';
@@ -112,7 +110,7 @@ function VerifyContent() {
               type="text"
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
-              placeholder="e.g. AG-T10001"
+              placeholder="Enter gate-pass token (e.g. AG-T...)"
               className="w-full h-12 pl-11 pr-4 bg-mint-light/40 border-[2px] border-navy-border rounded-xl font-mono text-sm font-bold text-navy-border placeholder:text-slate-400 focus:ring-0 focus:border-forest shadow-bento-sm uppercase"
             />
           </div>
@@ -132,23 +130,6 @@ function VerifyContent() {
             )}
           </button>
         </form>
-
-        {/* Quick Click Samples */}
-        <div className="pt-2 flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="text-slate-400 font-bold uppercase text-[10px]">Quick Test:</span>
-          {sampleTokens.map((st) => (
-            <button
-              key={st}
-              onClick={() => {
-                setTokenInput(st);
-                handleVerify(st);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-mint-foam hover:bg-mint-light text-forest border border-navy-border transition-all shadow-sm active:translate-y-0.5"
-            >
-              {st}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Error Message */}
@@ -156,6 +137,13 @@ function VerifyContent() {
         <div className="p-4 rounded-2xl bg-coral/60 border-[2px] border-navy-border text-coral-dark font-mono text-xs font-bold flex items-center gap-2 shadow-bento-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {/* Initial Empty Guide */}
+      {!booking && !loading && !error && (
+        <div className="p-8 text-center bg-white rounded-bento border-[2px] border-dashed border-slate-300 text-slate-500 font-mono text-xs">
+          Enter an authenticated gate-pass token code above and click <span className="font-bold text-forest">Verify Token</span> to inspect gate entry clearance details.
         </div>
       )}
 
