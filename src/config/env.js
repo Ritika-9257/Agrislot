@@ -21,8 +21,9 @@ const env = {
   DB_CONNECTION_LIMIT: parseInt(process.env.DB_CONNECTION_LIMIT, 10) || 10,
   DB_QUEUE_LIMIT: parseInt(process.env.DB_QUEUE_LIMIT, 10) || 0,
 
-  // Database SSL (for Managed Cloud MySQL: Aiven, DigitalOcean, AWS RDS, Railway, etc.)
+  // Database SSL (for Managed Cloud MySQL: Aiven, DigitalOcean, AWS RDS, Railway, TiDB, etc.)
   DB_SSL: process.env.DB_SSL === 'true' || process.env.DB_SSL === '1',
+  DB_SSL_REJECT_UNAUTHORIZED: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
   DB_SSL_CA: process.env.DB_SSL_CA || null,
   DB_SSL_CA_PATH: process.env.DB_SSL_CA_PATH || null,
 

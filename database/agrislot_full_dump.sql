@@ -59,8 +59,11 @@ CREATE TABLE Slots (
     Slot_Date DATE NOT NULL,
     Start_Time TIME NOT NULL,
     End_Time TIME NOT NULL,
+    Max_Bookings INT NOT NULL DEFAULT 5,
+    Booked_Count INT NOT NULL DEFAULT 0,
     Max_Capacity_Tons DECIMAL(8,2) NOT NULL,
     Booked_Capacity_Tons DECIMAL(8,2) DEFAULT 0.00,
+    Slot_Status ENUM('Available', 'Full', 'Closed') NOT NULL DEFAULT 'Available',
 
     CONSTRAINT fk_slots_mandi
         FOREIGN KEY (Mandi_ID)
@@ -72,6 +75,13 @@ CREATE TABLE Slots (
             Max_Capacity_Tons > 0
             AND Booked_Capacity_Tons >= 0
             AND Booked_Capacity_Tons <= Max_Capacity_Tons
+        ),
+
+    CONSTRAINT chk_booked_count
+        CHECK (
+            Max_Bookings > 0
+            AND Booked_Count >= 0
+            AND Booked_Count <= Max_Bookings
         ),
 
     CONSTRAINT chk_slot_time
@@ -90,6 +100,13 @@ CREATE TABLE Bookings (
         'Completed', 'Cancelled'
     ) DEFAULT 'Confirmed',
     Token_Number VARCHAR(20) UNIQUE NOT NULL,
+    Gate_Number VARCHAR(20) DEFAULT 'Gate-1',
+    Weighbridge_Gross_Weight DECIMAL(8,2) NULL,
+    Weighbridge_Tare_Weight DECIMAL(8,2) NULL,
+    Weighbridge_Net_Weight DECIMAL(8,2) NULL,
+    Check_In_Time TIMESTAMP NULL,
+    Completed_Time TIMESTAMP NULL,
+    Cancelled_Time TIMESTAMP NULL,
     Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_estimated_weight
@@ -104,6 +121,20 @@ CREATE TABLE Bookings (
     FOREIGN KEY (Produce_ID)
         REFERENCES Produce(Produce_ID)
 );
+
+-- 5B. FARMER_DAILY_RESERVATIONS (Enforces 1 active booking per farmer per calendar date)
+CREATE TABLE IF NOT EXISTS Farmer_Daily_Reservations (
+    Reservation_ID INT AUTO_INCREMENT PRIMARY KEY,
+    Farmer_ID INT NOT NULL,
+    Reservation_Date DATE NOT NULL,
+    Booking_ID INT NOT NULL,
+    Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_farmer_daily_reservation (Farmer_ID, Reservation_Date),
+    INDEX idx_res_booking_id (Booking_ID),
+    INDEX idx_res_date (Reservation_Date),
+    CONSTRAINT fk_res_farmer FOREIGN KEY (Farmer_ID) REFERENCES Farmers(Farmer_ID) ON DELETE CASCADE,
+    CONSTRAINT fk_res_booking FOREIGN KEY (Booking_ID) REFERENCES Bookings(Booking_ID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6. WAREHOUSES
 CREATE TABLE Warehouses (
@@ -169,13 +200,18 @@ CREATE TABLE Transactions (
         REFERENCES Warehouses(Warehouse_ID)
 );
 
--- 9. USER_LOGIN (For Admin and Staff Authentication)
+-- 9. USER_LOGIN (For Admin, Staff, and Farmer Authentication)
 CREATE TABLE User_Login (
     User_ID INT AUTO_INCREMENT PRIMARY KEY,
     Username VARCHAR(50) NOT NULL UNIQUE,
     Password_Hash VARCHAR(255) NOT NULL,
     User_Role ENUM('Admin', 'Mandi_Officer', 'Trader', 'Farmer') NOT NULL DEFAULT 'Admin',
     Account_Status ENUM('Active', 'Suspended', 'Inactive') NOT NULL DEFAULT 'Active',
+    Google_ID VARCHAR(255) NULL UNIQUE,
+    Avatar_URL VARCHAR(500) NULL,
+    Auth_Provider ENUM('local', 'google') NOT NULL DEFAULT 'local',
+    Email VARCHAR(150) NULL UNIQUE,
+    Full_Name VARCHAR(150) NULL,
     Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     Last_Login TIMESTAMP NULL
 );
@@ -446,12 +482,12 @@ ON DUPLICATE KEY UPDATE Actual_Weight = VALUES(Actual_Weight);
 
 -- 9. DEFAULT USERS (admin / admin123, officer / officer123, farmer / farmer123)
 -- Password hashes generated with bcrypt 10 rounds:
-INSERT INTO User_Login (Username, Password_Hash, User_Role, Account_Status)
+INSERT INTO User_Login (Username, Password_Hash, User_Role, Account_Status, Email, Full_Name)
 VALUES 
-('admin', '$2a$10$AOon9VKAk6jpNK565cxwv.bUMfcumCdP5HYKdPMg9VhmFvxbIuGii', 'Admin', 'Active'),
-('officer', '$2a$10$A96Vwg4xrirPXMosjCFI3OgopW9fjDZKzHx8RoAsd6XUfLCWdENuG', 'Mandi_Officer', 'Active'),
-('farmer', '$2a$10$JcuhIdBWuyALP7WW1fsxUeF823ppAd6qqxbmfNslm5OPSndq9E.ty', 'Farmer', 'Active')
-ON DUPLICATE KEY UPDATE Password_Hash = VALUES(Password_Hash), User_Role = VALUES(User_Role);
+('admin', '$2a$10$AOon9VKAk6jpNK565cxwv.bUMfcumCdP5HYKdPMg9VhmFvxbIuGii', 'Admin', 'Active', 'admin@agrislot.com', 'APMC Mandi Administrator'),
+('officer', '$2a$10$A96Vwg4xrirPXMosjCFI3OgopW9fjDZKzHx8RoAsd6XUfLCWdENuG', 'Mandi_Officer', 'Active', 'officer@agrislot.com', 'Gate Operations Officer'),
+('farmer', '$2a$10$JcuhIdBWuyALP7WW1fsxUeF823ppAd6qqxbmfNslm5OPSndq9E.ty', 'Farmer', 'Active', 'farmer@agrislot.com', 'Ramesh Patel (Farmer)')
+ON DUPLICATE KEY UPDATE Password_Hash = VALUES(Password_Hash), User_Role = VALUES(User_Role), Email = VALUES(Email), Full_Name = VALUES(Full_Name);
 -- =====================================================================
 -- AGRISLOT STORED PROCEDURES, CURSORS, FUNCTIONS, AND TRIGGERS
 -- Database: agrislot
@@ -1183,27 +1219,123 @@ BEGIN
 END$$
 DELIMITER ;
 
--- C.2: Trigger Validation on Base Table affecting View
--- When a booking is inserted or modified, validate that capacity is respected
+-- C.2: Trigger Validation on Base Table (Hybrid farmer count + weight capacity validation)
 DROP TRIGGER IF EXISTS Validate_Booking_Slot_Capacity;
 DELIMITER $$
 CREATE TRIGGER Validate_Booking_Slot_Capacity
 BEFORE INSERT ON Bookings
 FOR EACH ROW
 BEGIN
-    DECLARE v_Remaining DECIMAL(8,2);
-    
-    SELECT (Max_Capacity_Tons - Booked_Capacity_Tons)
-    INTO v_Remaining
+    DECLARE v_MaxBookings INT;
+    DECLARE v_BookedCount INT;
+    DECLARE v_MaxCapacity DECIMAL(8,2);
+    DECLARE v_BookedCapacity DECIMAL(8,2);
+    DECLARE v_SlotStatus VARCHAR(20);
+    DECLARE v_RemainingWeight DECIMAL(8,2);
+
+    -- Fetch current slot state
+    SELECT Max_Bookings, Booked_Count, Max_Capacity_Tons, Booked_Capacity_Tons, Slot_Status
+    INTO v_MaxBookings, v_BookedCount, v_MaxCapacity, v_BookedCapacity, v_SlotStatus
     FROM Slots
     WHERE Slot_ID = NEW.Slot_ID;
-    
-    IF v_Remaining IS NULL THEN
+
+    IF v_MaxCapacity IS NULL THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Specified Slot ID does not exist';
-    ELSEIF NEW.Estimated_Weight_Tons > v_Remaining THEN
+    END IF;
+
+    IF v_SlotStatus = 'Closed' THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Slot is closed and cannot accept new bookings';
+    END IF;
+
+    -- 1. Farmer limit condition (Maximum farmers per slot)
+    IF v_BookedCount >= v_MaxBookings THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Slot farmer capacity limit reached (maximum 5 farmers allowed per slot)';
+    END IF;
+
+    -- 2. Weight capacity condition
+    SET v_RemainingWeight = v_MaxCapacity - v_BookedCapacity;
+    IF NEW.Estimated_Weight_Tons > v_RemainingWeight THEN
         SIGNAL SQLSTATE '45000'
             SET MESSAGE_TEXT = 'Estimated weight exceeds remaining slot capacity';
     END IF;
+END$$
+DELIMITER ;
+
+-- C.3: One Booking Per Farmer Per Day Trigger
+DROP TRIGGER IF EXISTS Enforce_One_Booking_Per_Farmer_Per_Day;
+DELIMITER $$
+CREATE TRIGGER Enforce_One_Booking_Per_Farmer_Per_Day
+BEFORE INSERT ON Bookings
+FOR EACH ROW
+BEGIN
+    DECLARE v_SlotDate DATE;
+    DECLARE v_ExistingCount INT;
+
+    SELECT Slot_Date INTO v_SlotDate FROM Slots WHERE Slot_ID = NEW.Slot_ID;
+
+    IF v_SlotDate IS NOT NULL THEN
+        SELECT COUNT(*) INTO v_ExistingCount
+        FROM Bookings b
+        JOIN Slots s ON b.Slot_ID = s.Slot_ID
+        WHERE b.Farmer_ID = NEW.Farmer_ID
+          AND s.Slot_Date = v_SlotDate
+          AND b.Booking_Status != 'Cancelled';
+
+        IF v_ExistingCount > 0 THEN
+            SIGNAL SQLSTATE '45000'
+                SET MESSAGE_TEXT = 'Farmer already has an active booking on this date. Only one booking per farmer per day is allowed.';
+        END IF;
+    END IF;
+END$$
+DELIMITER ;
+
+-- C.4: Reconcile_Slot_Counters Stored Procedure
+DROP PROCEDURE IF EXISTS Reconcile_Slot_Counters;
+DELIMITER $$
+CREATE PROCEDURE Reconcile_Slot_Counters(IN p_slot_id INT)
+BEGIN
+  IF p_slot_id IS NOT NULL AND p_slot_id > 0 THEN
+    UPDATE Slots s
+    LEFT JOIN (
+      SELECT 
+        Slot_ID,
+        COUNT(*) AS Active_Count,
+        COALESCE(SUM(Estimated_Weight_Tons), 0.00) AS Active_Weight
+      FROM Bookings
+      WHERE Slot_ID = p_slot_id AND Booking_Status != 'Cancelled'
+      GROUP BY Slot_ID
+    ) b ON s.Slot_ID = b.Slot_ID
+    SET 
+      s.Booked_Count = COALESCE(b.Active_Count, 0),
+      s.Booked_Capacity_Tons = COALESCE(b.Active_Weight, 0.00),
+      s.Slot_Status = CASE
+        WHEN s.Slot_Status = 'Closed' THEN 'Closed'
+        WHEN COALESCE(b.Active_Count, 0) >= s.Max_Bookings OR COALESCE(b.Active_Weight, 0.00) >= s.Max_Capacity_Tons THEN 'Full'
+        ELSE 'Available'
+      END
+    WHERE s.Slot_ID = p_slot_id;
+  ELSE
+    UPDATE Slots s
+    LEFT JOIN (
+      SELECT 
+        Slot_ID,
+        COUNT(*) AS Active_Count,
+        COALESCE(SUM(Estimated_Weight_Tons), 0.00) AS Active_Weight
+      FROM Bookings
+      WHERE Booking_Status != 'Cancelled'
+      GROUP BY Slot_ID
+    ) b ON s.Slot_ID = b.Slot_ID
+    SET 
+      s.Booked_Count = COALESCE(b.Active_Count, 0),
+      s.Booked_Capacity_Tons = COALESCE(b.Active_Weight, 0.00),
+      s.Slot_Status = CASE
+        WHEN s.Slot_Status = 'Closed' THEN 'Closed'
+        WHEN COALESCE(b.Active_Count, 0) >= s.Max_Bookings OR COALESCE(b.Active_Weight, 0.00) >= s.Max_Capacity_Tons THEN 'Full'
+        ELSE 'Available'
+      END;
+  END IF;
 END$$
 DELIMITER ;
