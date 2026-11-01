@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { 
   Menu, 
   X, 
@@ -20,8 +20,10 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 
-export default function Sidebar() {
+function SidebarContent() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams ? searchParams.get('tab') : null;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [backendOnline, setBackendOnline] = useState(null);
   const { user, openLogin } = useAuth();
@@ -75,6 +77,40 @@ export default function Sidebar() {
       { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   }
+
+  const isLinkActive = (link) => {
+    if (!link) return false;
+    const [pathPart, queryPart] = link.href.split('?');
+    if (pathname !== pathPart) return false;
+
+    // If link has query parameters (e.g. ?tab=...)
+    if (queryPart) {
+      const linkParams = new URLSearchParams(queryPart);
+      const linkTab = linkParams.get('tab');
+      if (linkTab === 'users') {
+        return currentTab === 'users' || currentTab === 'access';
+      }
+      if (linkTab === 'analysis') {
+        return currentTab === 'analysis' || currentTab === 'dbms';
+      }
+      if (linkTab === 'active') {
+        return currentTab === 'active' || currentTab === 'inprocess';
+      }
+      if (linkTab === 'verify') {
+        return currentTab === 'verify' || currentTab === 'gate';
+      }
+      return currentTab === linkTab;
+    }
+
+    // Link has no query string (e.g. /admin, /farmer, /, /verify)
+    if (pathPart === '/admin') {
+      return !currentTab || currentTab === 'overview';
+    }
+    if (pathPart === '/farmer') {
+      return !currentTab || currentTab === 'book';
+    }
+    return true;
+  };
 
   return (
     <>
@@ -141,7 +177,7 @@ export default function Sidebar() {
             <nav className="space-y-1.5">
               {navLinks.map((link) => {
                 const Icon = link.icon;
-                const isActive = pathname === link.href;
+                const isActive = isLinkActive(link);
                 return (
                   <Link
                     key={link.href}
@@ -229,5 +265,13 @@ export default function Sidebar() {
         </div>
       </aside>
     </>
+  );
+}
+
+export default function Sidebar() {
+  return (
+    <Suspense fallback={<aside className="fixed left-0 top-0 h-full w-64 bg-white border-r-[2.5px] border-navy-border z-50 hidden lg:block" />}>
+      <SidebarContent />
+    </Suspense>
   );
 }

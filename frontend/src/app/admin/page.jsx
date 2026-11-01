@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { 
   ShieldCheck, 
   LogIn, 
@@ -35,6 +35,7 @@ import { AgriSlotAPI } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
 function AdminPortalContent() {
+  const router = useRouter();
   const { user: authUser, token: contextToken, openLogin, logout: contextLogout } = useAuth();
   const searchParams = useSearchParams();
   const tabParam = searchParams ? searchParams.get('tab') : null;
@@ -42,21 +43,35 @@ function AdminPortalContent() {
   const isAdmin = authUser?.role === 'Admin';
   const isOfficer = authUser?.role === 'Mandi_Officer';
 
+  const getTabFromParam = (tab) => {
+    if (tab === 'users' || tab === 'access') return isOfficer ? 'verify' : 'access';
+    if (tab === 'bookings') return 'bookings';
+    if (tab === 'active' || tab === 'inprocess') return 'active';
+    if (tab === 'confirmed') return 'confirmed';
+    if (tab === 'completed') return 'completed';
+    if (tab === 'cancelled') return 'cancelled';
+    if (tab === 'slots') return isOfficer ? 'verify' : 'slots';
+    if (tab === 'farmers') return isOfficer ? 'verify' : 'farmers';
+    if (tab === 'analysis' || tab === 'dbms') return isOfficer ? 'verify' : 'analysis';
+    if (tab === 'verify' || tab === 'gate') return 'verify';
+    if (tab === 'overview') return isOfficer ? 'verify' : 'overview';
+    return isOfficer ? 'verify' : 'overview';
+  };
+
   // Active Main Tab:
   // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'slots' | 'farmers' | 'analysis' | 'access'
-  const [activeTab, setActiveTab] = useState(() => {
-    if (tabParam === 'users' || tabParam === 'access') return isOfficer ? 'verify' : 'access';
-    if (tabParam === 'bookings') return 'bookings';
-    if (tabParam === 'active' || tabParam === 'inprocess') return 'active';
-    if (tabParam === 'confirmed') return 'confirmed';
-    if (tabParam === 'completed') return 'completed';
-    if (tabParam === 'cancelled') return 'cancelled';
-    if (tabParam === 'slots') return isOfficer ? 'verify' : 'slots';
-    if (tabParam === 'farmers') return isOfficer ? 'verify' : 'farmers';
-    if (tabParam === 'analysis' || tabParam === 'dbms') return isOfficer ? 'verify' : 'analysis';
-    if (tabParam === 'verify' || tabParam === 'gate') return 'verify';
-    return isOfficer ? 'verify' : 'overview';
-  });
+  const [activeTab, setActiveTab] = useState(() => getTabFromParam(tabParam));
+
+  // Sync activeTab whenever URL query changes (e.g. sidebar navigation)
+  useEffect(() => {
+    setActiveTab(getTabFromParam(tabParam));
+  }, [tabParam, isOfficer]);
+
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    const targetUrl = newTab === 'overview' ? '/admin' : `/admin?tab=${newTab}`;
+    router.push(targetUrl, { scroll: false });
+  };
 
   // Overview Date Filter
   const todayStr = new Date().toISOString().split('T')[0];
@@ -488,7 +503,7 @@ function AdminPortalContent() {
       <div className="bg-white border-2 border-navy-border rounded-2xl p-1.5 shadow-sm overflow-x-auto">
         <div className="flex items-center gap-1 min-w-max">
           <button
-            onClick={() => setActiveTab('overview')}
+            onClick={() => handleTabChange('overview')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'overview'
                 ? 'bg-forest text-white shadow-sm'
@@ -498,7 +513,7 @@ function AdminPortalContent() {
             📊 Overview
           </button>
           <button
-            onClick={() => setActiveTab('verify')}
+            onClick={() => handleTabChange('verify')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'verify'
                 ? 'bg-forest text-white shadow-sm'
@@ -508,7 +523,7 @@ function AdminPortalContent() {
             🔍 Verify Token & Check-In
           </button>
           <button
-            onClick={() => setActiveTab('active')}
+            onClick={() => handleTabChange('active')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'active'
                 ? 'bg-sky-600 text-white shadow-sm'
@@ -518,7 +533,7 @@ function AdminPortalContent() {
             🚜 Active In-Yard ({inProcessBookings.length})
           </button>
           <button
-            onClick={() => setActiveTab('confirmed')}
+            onClick={() => handleTabChange('confirmed')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'confirmed'
                 ? 'bg-amber-600 text-white shadow-sm'
@@ -528,7 +543,7 @@ function AdminPortalContent() {
             ⏳ Confirmed / Expected ({upcomingBookings.length})
           </button>
           <button
-            onClick={() => setActiveTab('bookings')}
+            onClick={() => handleTabChange('bookings')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'bookings'
                 ? 'bg-forest text-white shadow-sm'
@@ -538,7 +553,7 @@ function AdminPortalContent() {
             📋 All Bookings ({allBookings.length})
           </button>
           <button
-            onClick={() => setActiveTab('completed')}
+            onClick={() => handleTabChange('completed')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'completed'
                 ? 'bg-emerald-700 text-white shadow-sm'
@@ -548,7 +563,7 @@ function AdminPortalContent() {
             ✓ Completed ({completedBookings.length})
           </button>
           <button
-            onClick={() => setActiveTab('cancelled')}
+            onClick={() => handleTabChange('cancelled')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'cancelled'
                 ? 'bg-rose-700 text-white shadow-sm'
@@ -561,7 +576,7 @@ function AdminPortalContent() {
             <>
               <button
                 onClick={() => {
-                  setActiveTab('slots');
+                  handleTabChange('slots');
                   loadSlots();
                 }}
                 className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
@@ -574,7 +589,7 @@ function AdminPortalContent() {
               </button>
               <button
                 onClick={() => {
-                  setActiveTab('farmers');
+                  handleTabChange('farmers');
                   loadFarmers();
                 }}
                 className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
@@ -587,7 +602,7 @@ function AdminPortalContent() {
               </button>
               <button
                 onClick={() => {
-                  setActiveTab('analysis');
+                  handleTabChange('analysis');
                   loadAnalysisData();
                 }}
                 className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
@@ -600,7 +615,7 @@ function AdminPortalContent() {
               </button>
               <button
                 onClick={() => {
-                  setActiveTab('access');
+                  handleTabChange('access');
                   loadUsers();
                 }}
                 className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
@@ -714,7 +729,7 @@ function AdminPortalContent() {
                 When a farmer arrives at the gate, type their token to confirm entry and mark them &apos;Checked-In&apos;.
               </p>
               <button
-                onClick={() => setActiveTab('verify')}
+                onClick={() => handleTabChange('verify')}
                 className="py-2 px-4 rounded-xl bg-forest text-white font-bold text-xs hover:bg-forest-light transition-all flex items-center gap-1.5"
               >
                 <span>Verify Token & Check-In</span>
@@ -733,7 +748,7 @@ function AdminPortalContent() {
                 Monitor trucks currently unloading inside the mandi yard and click &apos;Mark Completed&apos; when finished.
               </p>
               <button
-                onClick={() => setActiveTab('active')}
+                onClick={() => handleTabChange('active')}
                 className="py-2 px-4 rounded-xl bg-sky-600 text-white font-bold text-xs hover:bg-sky-700 transition-all flex items-center gap-1.5"
               >
                 <span>Manage In-Process</span>
@@ -753,7 +768,7 @@ function AdminPortalContent() {
                   Review confirmed bookings awaiting gate arrival and prepare weighbridge queue.
                 </p>
                 <button
-                  onClick={() => setActiveTab('confirmed')}
+                  onClick={() => handleTabChange('confirmed')}
                   className="py-2 px-4 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-700 transition-all flex items-center gap-1.5"
                 >
                   <span>View Expected Arrivals</span>
@@ -773,7 +788,7 @@ function AdminPortalContent() {
                 </p>
                 <button
                   onClick={() => {
-                    setActiveTab('access');
+                    handleTabChange('access');
                     loadUsers();
                   }}
                   className="py-2 px-4 rounded-xl bg-purple-700 text-white font-bold text-xs hover:bg-purple-800 transition-all flex items-center gap-1.5"
@@ -1402,7 +1417,7 @@ function AdminPortalContent() {
                           type="button"
                           onClick={() => {
                             setBookingSearch(f.Name);
-                            setActiveTab('bookings');
+                            handleTabChange('bookings');
                           }}
                           className="px-2.5 py-1 bg-mint-foam text-forest rounded text-[11px] font-bold border border-emerald-300"
                         >

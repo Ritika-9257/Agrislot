@@ -59,8 +59,16 @@ const TIME_SLOTS_CONFIG = [
 function FarmerPortalContent() {
   const { user, openLogin } = useAuth();
   const searchParams = useSearchParams();
-  const initialTab = searchParams.get('tab') || 'book';
-  const [activeTab, setActiveTab] = useState(initialTab); // 'book' | 'history'
+  const tabParam = searchParams.get('tab') || 'book';
+  const [activeTab, setActiveTab] = useState(tabParam); // 'book' | 'history'
+
+  useEffect(() => {
+    if (tabParam === 'history') {
+      setActiveTab('history');
+    } else {
+      setActiveTab('book');
+    }
+  }, [tabParam]);
 
   // Master Data
   const [mandis, setMandis] = useState([]);
