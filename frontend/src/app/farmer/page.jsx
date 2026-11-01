@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { 
   Calendar, 
@@ -446,6 +447,33 @@ function FarmerPortalContent() {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
+
+      {/* Profile Incomplete Notification Banner */}
+      {user && user.role === 'Farmer' && user.isProfileComplete === false && (
+        <div className="bg-amber-50 border-[2.5px] border-amber-500 rounded-bento p-4 shadow-bento flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-navy-border flex items-center justify-center font-bold text-lg border border-navy-border shrink-0">
+              ⚠️
+            </div>
+            <div>
+              <div className="font-display font-black text-sm text-navy-border flex items-center gap-2">
+                <span>Complete Your Farmer Profile</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-mono font-bold">Action Needed</span>
+              </div>
+              <p className="text-xs text-gray-700 font-mono mt-0.5">
+                Your mobile phone number and village address are missing. Update them to receive instant SMS Gate Passes and weighbridge clearance slips.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/profile?notice=complete"
+            className="shrink-0 px-4 py-2 rounded-xl bg-saffron hover:bg-saffron-dark text-navy-border font-display font-black text-xs uppercase tracking-wider border-[1.5px] border-navy-border shadow-bento-sm active:translate-y-0.5 transition-all flex items-center gap-1.5"
+          >
+            <span>Update Profile Now</span>
+            <span>&rarr;</span>
+          </Link>
+        </div>
+      )}
       
       {/* Farmer Header Banner */}
       <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

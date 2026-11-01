@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   CalendarCheck,
   Users,
-  AlertCircle
+  AlertCircle,
+  UserCheck
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -55,16 +56,19 @@ function SidebarContent() {
       { href: '/admin?tab=slots', id: 'slots', label: 'Slot Capacity Manager', icon: Layers, badge: 'SLOTS' },
       { href: '/admin?tab=farmers', id: 'farmers', label: 'Farmer Master Directory', icon: Tractor, badge: 'FARMERS' },
       { href: '/admin?tab=access', id: 'access', label: 'Manage Roles (RBAC)', icon: Users, badge: 'ACCESS' },
+      { href: '/profile', id: 'profile', label: 'Admin Profile', icon: UserCheck, badge: 'PROFILE' },
     ];
   } else if (user?.role === 'Mandi_Officer') {
     navLinks = [
       { href: '/admin?tab=verify', id: 'gate', label: 'Gate Operations', icon: QrCode, badge: 'OFFICER' },
       { href: '/admin?tab=bookings', id: 'bookings', label: 'Booking Management', icon: CalendarCheck, badge: 'BOOKINGS' },
+      { href: '/profile', id: 'profile', label: 'Officer Profile', icon: UserCheck, badge: 'PROFILE' },
     ];
   } else if (user?.role === 'Farmer') {
     navLinks = [
       { href: '/farmer', id: 'farmer-book', label: 'Book Arrival Slot', icon: Tractor, badge: 'SLOTS' },
       { href: '/farmer?tab=history', id: 'farmer-history', label: 'My Bookings & Passes', icon: CalendarCheck, badge: 'PASSES' },
+      { href: '/profile', id: 'profile', label: 'My Farmer Profile', icon: UserCheck, badge: user?.isProfileComplete === false ? 'ALERT' : 'PROFILE' },
     ];
   } else {
     // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin / Officer links)
@@ -110,6 +114,10 @@ function SidebarContent() {
         return currentTab === 'history';
       }
       return !currentTab || currentTab === 'book';
+    }
+
+    if (pathname === '/profile') {
+      return link.id === 'profile';
     }
 
     return true;
@@ -228,7 +236,11 @@ function SidebarContent() {
         {/* Bottom User / Login Pill */}
         <div className="pt-4 border-t-2 border-dashed border-slate-200">
           {user ? (
-            <div className="flex items-center gap-3 bg-mint-light p-2.5 rounded-xl border-[1.5px] border-navy-border">
+            <Link
+              href="/profile"
+              className="flex items-center gap-3 bg-mint-light hover:bg-mint-foam/90 transition-all p-2.5 rounded-xl border-[1.5px] border-navy-border shadow-bento-sm group cursor-pointer"
+              title="View & Edit My Profile"
+            >
               <div className="w-8 h-8 rounded-full bg-forest text-saffron flex items-center justify-center font-bold text-xs border border-navy-border shrink-0 overflow-hidden">
                 {user.avatar ? (
                   <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
@@ -236,20 +248,21 @@ function SidebarContent() {
                   user.name ? user.name.slice(0, 2).toUpperCase() : 'AS'
                 )}
               </div>
-              <div className="overflow-hidden">
+              <div className="overflow-hidden flex-1">
                 <div className="font-bold text-xs truncate text-navy-border flex items-center gap-1.5">
-                  <span className="truncate">{user.name}</span>
+                  <span className="truncate group-hover:text-forest transition-colors">{user.name}</span>
                   {user.provider === 'google' && (
                     <span className="shrink-0 px-1 py-0.2 bg-white text-[8px] font-mono font-bold text-blue-600 rounded border border-blue-200">
                       Google
                     </span>
                   )}
                 </div>
-                <div className="font-mono text-[10px] text-forest-light truncate font-semibold">
-                  {user.village ? `${user.village}, ${user.district || 'Gujarat'}` : user.role || 'Farmer'}
+                <div className="font-mono text-[10px] text-forest-light truncate font-semibold flex items-center justify-between">
+                  <span>{user.village ? `${user.village}` : user.role || 'Farmer'}</span>
+                  <span className="text-[9px] text-forest font-bold underline opacity-0 group-hover:opacity-100 transition-opacity">Edit &rarr;</span>
                 </div>
               </div>
-            </div>
+            </Link>
           ) : (
             <button
               onClick={openLogin}

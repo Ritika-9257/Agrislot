@@ -280,7 +280,13 @@ export const AgriSlotAPI = {
     }),
   getCurrentUser: (token) =>
     apiRequest('/auth/me', {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    }),
+  updateProfile: (data, token) =>
+    apiRequest('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
     }),
   getAdminDashboard: (token) =>
     apiRequest('/admin/dashboard', {

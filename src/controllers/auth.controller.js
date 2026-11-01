@@ -53,6 +53,19 @@ const AuthController = {
     } catch (err) {
       next(err);
     }
+  },
+
+  async updateProfile(req, res, next) {
+    try {
+      const { name, phone, village, upiId } = req.body || {};
+      const updatedUser = await AuthService.updateProfile(req.user.userId, { name, phone, village, upiId });
+      return successResponse(res, {
+        message: 'Profile updated successfully',
+        data: updatedUser
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 };
 

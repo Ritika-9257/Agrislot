@@ -454,4 +454,114 @@ test('HTTP API Route In-Memory Dispatch Suite', async (t) => {
       AuditService.logAudit = origLogAudit;
     }
   });
+
+  await t.test('17. PUT /api/v1/auth/profile updates user and farmer profile details', async () => {
+    const jwt = require('jsonwebtoken');
+    const UserRepository = require('../src/repositories/user.repository');
+    const FarmerRepository = require('../src/repositories/farmer.repository');
+    const origFindById = UserRepository.findById;
+    const origUpdateProfile = UserRepository.updateProfile;
+    const origFarmerUpdate = FarmerRepository.update;
+    const origFarmerFindById = FarmerRepository.findById;
+
+    let mockUser = {
+      User_ID: 25,
+      Username: 'farmer_ramesh',
+      Email: 'ramesh@example.com',
+      Full_Name: 'Ramesh Patel',
+      User_Role: 'Farmer',
+      Account_Status: 'Active',
+      Farmer_ID: 101,
+      Phone: '9822014412'
+    };
+
+    let mockFarmer = {
+      Farmer_ID: 101,
+      Name: 'Ramesh Patel',
+      Phone: '9822014412',
+      Village: 'Bardoli',
+      UPI_ID: 'ramesh@upi',
+      Aadhar_No: '123456789012'
+    };
+
+    UserRepository.findById = async (id) => (id === 25 ? mockUser : null);
+    UserRepository.updateProfile = async (id, { fullName, phone }) => {
+      mockUser.Full_Name = fullName;
+      mockUser.Phone = phone;
+    };
+    FarmerRepository.findById = async (id) => (id === 101 ? mockFarmer : null);
+    FarmerRepository.update = async (id, updates) => {
+      Object.assign(mockFarmer, updates);
+      return mockFarmer;
+    };
+
+    try {
+      const token = jwt.sign(
+        { userId: 25, username: 'farmer_ramesh', role: 'Farmer' },
+        env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+
+      const res = await dispatch(app, {
+        method: 'PUT',
+        url: '/api/v1/auth/profile',
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          name: 'Ramesh Patel Updated',
+          phone: '9876543210',
+          village: 'Olpad, Surat',
+          upiId: 'ramesh.updated@upi'
+        }
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.body.success, true);
+      assert.strictEqual(res.body.data.name, 'Ramesh Patel Updated');
+      assert.strictEqual(res.body.data.phone, '9876543210');
+      assert.strictEqual(res.body.data.village, 'Olpad, Surat');
+      assert.strictEqual(res.body.data.upiId, 'ramesh.updated@upi');
+      assert.strictEqual(res.body.data.isProfileComplete, true);
+      assert.strictEqual(res.body.data.aadharMasked, 'XXXX-XXXX-9012');
+    } finally {
+      UserRepository.findById = origFindById;
+      UserRepository.updateProfile = origUpdateProfile;
+      FarmerRepository.findById = origFarmerFindById;
+      FarmerRepository.update = origFarmerUpdate;
+    }
+  });
+
+  await t.test('18. PUT /api/v1/auth/profile rejects invalid phone numbers (< 10 digits)', async () => {
+    const jwt = require('jsonwebtoken');
+    const UserRepository = require('../src/repositories/user.repository');
+    const origFindById = UserRepository.findById;
+    UserRepository.findById = async (id) => ({
+      User_ID: 25,
+      Username: 'farmer_ramesh',
+      User_Role: 'Farmer',
+      Account_Status: 'Active'
+    });
+
+    try {
+      const token = jwt.sign(
+        { userId: 25, username: 'farmer_ramesh', role: 'Farmer' },
+        env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+
+      const res = await dispatch(app, {
+        method: 'PUT',
+        url: '/api/v1/auth/profile',
+        headers: { authorization: `Bearer ${token}` },
+        body: {
+          phone: '12345' // invalid
+        }
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      assert.strictEqual(res.body.success, false);
+      assert.strictEqual(res.body.code, 'INVALID_PHONE');
+    } finally {
+      UserRepository.findById = origFindById;
+    }
+  });
 });

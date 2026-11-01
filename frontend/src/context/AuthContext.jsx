@@ -30,6 +30,11 @@ export function AuthProvider({ children }) {
           role: res.data.role || 'Farmer',
           status: res.data.status,
           farmerId: res.data.farmerId,
+          phone: res.data.phone || null,
+          village: res.data.village || null,
+          upiId: res.data.upiId || null,
+          aadharMasked: res.data.aadharMasked || null,
+          isProfileComplete: Boolean(res.data.isProfileComplete),
           token: activeToken
         };
         setUser(liveUser);
@@ -136,6 +141,8 @@ export function AuthProvider({ children }) {
 
     if (res && res.data && res.data.token) {
       const liveRole = res.data.user?.role || 'Farmer';
+      const isFarmer = liveRole === 'Farmer';
+      const isComplete = Boolean(res.data.user?.isProfileComplete);
       const userData = {
         userId: res.data.user?.userId,
         username: res.data.user?.username,
@@ -144,6 +151,11 @@ export function AuthProvider({ children }) {
         farmerId: res.data.user?.farmerId || null,
         avatar: res.data.user?.avatar,
         role: liveRole,
+        phone: res.data.user?.phone || null,
+        village: res.data.user?.village || null,
+        upiId: res.data.user?.upiId || null,
+        aadharMasked: res.data.user?.aadharMasked || null,
+        isProfileComplete: isComplete,
         token: res.data.token,
         provider: 'google'
       };
@@ -159,6 +171,9 @@ export function AuthProvider({ children }) {
       // Role-based destination redirect
       if (liveRole === 'Admin' || liveRole === 'Mandi_Officer') {
         router.push('/admin');
+      } else if (isFarmer && !isComplete) {
+        // Welcome newly registered Google farmer to complete profile details
+        router.push('/profile?notice=welcome');
       } else {
         router.push('/farmer');
       }
@@ -166,6 +181,17 @@ export function AuthProvider({ children }) {
     }
 
     throw new Error(res?.message || 'Google authentication failed on server');
+  };
+
+  const updateUserProfile = async (formData) => {
+    const activeToken = token || localStorage.getItem('agrislot_token');
+    if (!activeToken) throw new Error('Not authenticated');
+    const res = await AgriSlotAPI.updateProfile(formData, activeToken);
+    if (res && res.data) {
+      await refreshProfile(activeToken);
+      return res.data;
+    }
+    return null;
   };
 
   const signupFarmer = async (formData) => {
@@ -222,6 +248,7 @@ export function AuthProvider({ children }) {
         closeModal,
         loginWithCredentials,
         loginWithGoogle,
+        updateUserProfile,
         signupFarmer,
         refreshProfile,
         logout,

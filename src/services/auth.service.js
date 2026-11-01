@@ -168,17 +168,81 @@ const AuthService = {
       }
     }
 
+    let farmerDetails = null;
+    if (farmerId) {
+      try {
+        farmerDetails = await FarmerRepository.findById(farmerId);
+      } catch (e) {}
+    }
+
+    const isFarmer = user.User_Role === 'Farmer';
+    const isProfileComplete = isFarmer
+      ? Boolean(farmerDetails?.Phone && !farmerDetails.Phone.startsWith('9000000') && farmerDetails?.Village && farmerDetails.Village !== 'Mandi Area')
+      : true;
+
     return {
       userId: user.User_ID,
       username: user.Username,
       email: user.Email,
       name: user.Full_Name || user.Username,
-      avatar: user.Avatar_Url,
+      avatar: user.Avatar_Url || user.Avatar_URL,
       role: user.User_Role,
       status: user.Account_Status,
       farmerId: farmerId || user.Farmer_ID || null,
+      phone: farmerDetails?.Phone || user.Phone || null,
+      village: farmerDetails?.Village || null,
+      upiId: farmerDetails?.UPI_ID || null,
+      aadharMasked: farmerDetails?.Aadhar_No ? `XXXX-XXXX-${farmerDetails.Aadhar_No.slice(-4)}` : null,
+      isProfileComplete,
       createdAt: user.Created_At
     };
+  },
+
+  /**
+   * Update User Profile (Role-Specific: Farmer updates contact & village, Officer/Admin updates contact)
+   */
+  async updateProfile(userId, { name, phone, village, upiId }) {
+    const user = await UserRepository.findById(userId);
+    if (!user) {
+      throw new AppError('User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      if (cleanPhone.length !== 10) {
+        throw new AppError('Phone number must contain exactly 10 digits', 400, 'INVALID_PHONE');
+      }
+      phone = cleanPhone;
+    }
+
+    await UserRepository.updateProfile(userId, {
+      fullName: name?.trim() || user.Full_Name,
+      phone: phone || user.Phone
+    });
+
+    let farmerId = user.Farmer_ID;
+    if (user.User_Role === 'Farmer') {
+      if (farmerId) {
+        await FarmerRepository.update(farmerId, {
+          Name: name?.trim(),
+          Phone: phone,
+          Village: village?.trim(),
+          UPI_ID: upiId?.trim()
+        });
+      } else {
+        const derivedAadhar = '9' + String(user.User_ID).padStart(11, '0');
+        farmerId = await FarmerRepository.create({
+          Name: name?.trim() || user.Full_Name || user.Username,
+          Phone: phone || ('9' + String(user.User_ID).padStart(9, '0')),
+          Aadhar_No: derivedAadhar,
+          UPI_ID: upiId?.trim() || `${user.Username}@upi`,
+          Village: village?.trim() || 'Gujarat'
+        });
+        await UserRepository.linkFarmer(userId, farmerId);
+      }
+    }
+
+    return this.getMe(userId);
   },
 
   /**

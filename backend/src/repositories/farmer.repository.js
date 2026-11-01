@@ -104,6 +104,20 @@ const FarmerRepository = {
     `;
     const [rows] = await db.query(sql, [farmerId]);
     return rows;
+  },
+
+  async update(farmerId, { Name, Phone, Village, UPI_ID }) {
+    const fields = [];
+    const params = [];
+    if (Name !== undefined && Name !== null) { fields.push('Name = ?'); params.push(Name); }
+    if (Phone !== undefined && Phone !== null) { fields.push('Phone = ?'); params.push(Phone); }
+    if (Village !== undefined && Village !== null) { fields.push('Village = ?'); params.push(Village); }
+    if (UPI_ID !== undefined && UPI_ID !== null) { fields.push('UPI_ID = ?'); params.push(UPI_ID); }
+    if (fields.length === 0) return this.findById(farmerId);
+    params.push(farmerId);
+    const sql = `UPDATE Farmers SET ${fields.join(', ')} WHERE Farmer_ID = ?`;
+    await db.query(sql, params);
+    return this.findById(farmerId);
   }
 };
 

@@ -11,5 +11,6 @@ router.post('/login', authLimiter, validateRequest({ body: loginSchema }), AuthC
 router.post('/google', AuthController.googleLogin);
 router.post('/register', validateRequest({ body: loginSchema }), AuthController.register);
 router.get('/me', authenticate, AuthController.getMe);
+router.put('/profile', authenticate, AuthController.updateProfile);
 
 module.exports = router;

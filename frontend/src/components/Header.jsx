@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   HelpCircle, 
   Bell, 
@@ -205,27 +206,29 @@ export default function Header({ title }) {
           {/* User Profile / Login Button with Pop-up trigger */}
           {user ? (
             <div className="flex items-center gap-2 bg-mint-light p-1.5 pr-2.5 rounded-2xl border-[1.5px] border-navy-border shadow-bento-sm">
-              <div className="w-8 h-8 rounded-xl bg-forest text-saffron flex items-center justify-center font-display font-black text-xs border border-navy-border shrink-0 overflow-hidden">
-                {user.avatar ? (
-                  <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  user.name ? user.name.slice(0, 2).toUpperCase() : 'AP'
-                )}
-              </div>
-              <div className="hidden sm:block text-left font-mono">
-                <div className="text-xs font-bold text-navy-border leading-tight truncate max-w-[120px]">
-                  {user.name}
-                </div>
-                <div className="text-[10px] text-forest-light font-bold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  <span>{user.role || 'Farmer'}</span>
-                  {user.provider === 'google' && (
-                    <span className="ml-1 inline-flex items-center gap-0.5 px-1 py-0 bg-white border border-slate-300 rounded text-[9px] text-blue-600 font-bold">
-                      G-Auth
-                    </span>
+              <Link href="/profile" className="flex items-center gap-2 hover:opacity-85 transition-opacity" title="View & Edit My Profile">
+                <div className="w-8 h-8 rounded-xl bg-forest text-saffron flex items-center justify-center font-display font-black text-xs border border-navy-border shrink-0 overflow-hidden">
+                  {user.avatar ? (
+                    <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    user.name ? user.name.slice(0, 2).toUpperCase() : 'AP'
                   )}
                 </div>
-              </div>
+                <div className="hidden sm:block text-left font-mono">
+                  <div className="text-xs font-bold text-navy-border leading-tight truncate max-w-[120px]">
+                    {user.name}
+                  </div>
+                  <div className="text-[10px] text-forest-light font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span>{user.role || 'Farmer'}</span>
+                    {user.provider === 'google' && (
+                      <span className="ml-1 inline-flex items-center gap-0.5 px-1 py-0 bg-white border border-slate-300 rounded text-[9px] text-blue-600 font-bold">
+                        G-Auth
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Link>
               <button
                 onClick={logout}
                 className="ml-1 p-1.5 rounded-lg bg-white hover:bg-coral/40 text-navy-border hover:text-coral-dark border border-navy-border active:translate-y-0.5 transition-all"

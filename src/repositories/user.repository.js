@@ -1,7 +1,7 @@
 const db = require('../config/database');
 
-const USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status, Google_Sub, Email, Full_Name, Avatar_Url, Farmer_ID';
-const LEGACY_USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status';
+const USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status, Google_Sub, Email, Full_Name, Avatar_Url, Farmer_ID, Created_At, Last_Login';
+const LEGACY_USER_COLUMNS = 'User_ID, Username, Password_Hash, User_Role, Account_Status, Created_At, Last_Login';
 
 const UserRepository = {
   async findByUsername(username) {
@@ -247,6 +247,25 @@ const UserRepository = {
   async updateAccountStatus(userId, newStatus) {
     const sql = 'UPDATE User_Login SET Account_Status = ? WHERE User_ID = ?';
     await db.query(sql, [newStatus, userId]);
+    return this.findById(userId);
+  },
+
+  async updateProfile(userId, { fullName, phone }) {
+    const fields = [];
+    const params = [];
+    if (fullName !== undefined && fullName !== null) { fields.push('Full_Name = ?'); params.push(fullName); }
+    if (phone !== undefined && phone !== null) { fields.push('Phone = ?'); params.push(phone); }
+    if (fields.length === 0) return this.findById(userId);
+    params.push(userId);
+    try {
+      const sql = `UPDATE User_Login SET ${fields.join(', ')} WHERE User_ID = ?`;
+      await db.query(sql, params);
+    } catch (err) {
+      if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      if (fullName !== undefined && fullName !== null) {
+        await db.query('UPDATE User_Login SET Full_Name = ? WHERE User_ID = ?', [fullName, userId]);
+      }
+    }
     return this.findById(userId);
   }
 };

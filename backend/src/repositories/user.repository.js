@@ -248,6 +248,25 @@ const UserRepository = {
     const sql = 'UPDATE User_Login SET Account_Status = ? WHERE User_ID = ?';
     await db.query(sql, [newStatus, userId]);
     return this.findById(userId);
+  },
+
+  async updateProfile(userId, { fullName, phone }) {
+    const fields = [];
+    const params = [];
+    if (fullName !== undefined && fullName !== null) { fields.push('Full_Name = ?'); params.push(fullName); }
+    if (phone !== undefined && phone !== null) { fields.push('Phone = ?'); params.push(phone); }
+    if (fields.length === 0) return this.findById(userId);
+    params.push(userId);
+    try {
+      const sql = `UPDATE User_Login SET ${fields.join(', ')} WHERE User_ID = ?`;
+      await db.query(sql, params);
+    } catch (err) {
+      if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      if (fullName !== undefined && fullName !== null) {
+        await db.query('UPDATE User_Login SET Full_Name = ? WHERE User_ID = ?', [fullName, userId]);
+      }
+    }
+    return this.findById(userId);
   }
 };
 
