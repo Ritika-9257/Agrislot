@@ -1,0 +1,258 @@
+-- Seed Data for AgriSlot
+
+USE agrislot;
+
+-- 1. MANDIS (25 RECORDS)
+INSERT INTO Mandis
+(Mandi_Name, Location, District, Total_Daily_Capacity_Tons)
+VALUES
+('APMC Surat', 'Puna Kumbhariya', 'Surat', 500),
+('APMC Ahmedabad', 'Jamalpur', 'Ahmedabad', 800),
+('APMC Vadodara', 'Sayajipura', 'Vadodara', 400),
+('APMC Rajkot', 'Bedi Market Yard', 'Rajkot', 600),
+('APMC Anand', 'Anand Market Road', 'Anand', 300),
+('APMC Bharuch', 'Zadeshwar', 'Bharuch', 350),
+('APMC Valsad', 'Dharampur Road', 'Valsad', 250),
+('APMC Navsari', 'Eru Char Rasta', 'Navsari', 300),
+('APMC Mehsana', 'Unjha Road', 'Mehsana', 450),
+('APMC Junagadh', 'Joshipura', 'Junagadh', 400),
+('APMC Bhavnagar', 'Chitra', 'Bhavnagar', 350),
+('APMC Jamnagar', 'Hapa', 'Jamnagar', 500),
+('APMC Amreli', 'Lathi Road', 'Amreli', 250),
+('APMC Palanpur', 'Deesa Road', 'Banaskantha', 450),
+('APMC Godhra', 'Lunawada Road', 'Panchmahal', 300),
+('APMC Nadiad', 'Pij Road', 'Kheda', 350),
+('APMC Morbi', 'Ravapar Road', 'Morbi', 400),
+('APMC Porbandar', 'Ranavav Road', 'Porbandar', 200),
+('APMC Patan', 'Siddhpur Road', 'Patan', 300),
+('APMC Surendranagar', 'Wadhwan Road', 'Surendranagar', 350),
+('APMC Gandhinagar', 'Sector 25', 'Gandhinagar', 400),
+('APMC Botad', 'Gadhada Road', 'Botad', 200),
+('APMC Dahod', 'Station Road', 'Dahod', 250),
+('APMC Dwarka', 'Khambhalia Road', 'Devbhumi Dwarka', 200),
+('APMC Vyara', 'Songadh Road', 'Tapi', 250)
+ON DUPLICATE KEY UPDATE Mandi_Name = VALUES(Mandi_Name);
+
+-- 2. PRODUCE (25 RECORDS)
+INSERT INTO Produce
+(Produce_Name, Category, Storage_Type)
+VALUES
+('Wheat', 'Grains', 'Dry'),
+('Rice', 'Grains', 'Dry'),
+('Maize', 'Grains', 'Dry'),
+('Barley', 'Grains', 'Dry'),
+('Bajra', 'Grains', 'Dry'),
+('Jowar', 'Grains', 'Dry'),
+('Chickpeas', 'Pulses', 'Dry'),
+('Pigeon Peas', 'Pulses', 'Dry'),
+('Green Gram', 'Pulses', 'Dry'),
+('Black Gram', 'Pulses', 'Dry'),
+('Lentils', 'Pulses', 'Dry'),
+('Tomato', 'Vegetables', 'Cold'),
+('Potato', 'Vegetables', 'Ambient'),
+('Onion', 'Vegetables', 'Ambient'),
+('Cauliflower', 'Vegetables', 'Cold'),
+('Cabbage', 'Vegetables', 'Cold'),
+('Mango', 'Fruits', 'Cold'),
+('Banana', 'Fruits', 'Ambient'),
+('Apple', 'Fruits', 'Cold'),
+('Papaya', 'Fruits', 'Ambient'),
+('Groundnut', 'Oilseeds', 'Dry'),
+('Mustard Seed', 'Oilseeds', 'Dry'),
+('Sesame', 'Oilseeds', 'Dry'),
+('Soybean', 'Oilseeds', 'Dry'),
+('Sunflower Seed', 'Oilseeds', 'Dry')
+ON DUPLICATE KEY UPDATE Produce_Name = VALUES(Produce_Name);
+
+-- 3. FARMERS (25 RECORDS)
+INSERT INTO Farmers
+(Name, Phone, Aadhar_No, UPI_ID, Village)
+VALUES
+('Ramesh Patel', '9000000001', '900000000001', 'ramesh1@upi', 'Olpad'),
+('Suresh Chaudhary', '9000000002', '900000000002', 'suresh2@upi', 'Bardoli'),
+('Mahesh Parmar', '9000000003', '900000000003', 'mahesh3@upi', 'Kamrej'),
+('Kiran Desai', '9000000004', '900000000004', 'kiran4@upi', 'Palsana'),
+('Arjun Patel', '9000000005', '900000000005', 'arjun5@upi', 'Navsari'),
+('Vijay Shah', '9000000006', '900000000006', 'vijay6@upi', 'Anand'),
+('Paresh Joshi', '9000000007', '900000000007', 'paresh7@upi', 'Nadiad'),
+('Nilesh Rathod', '9000000008', '900000000008', 'nilesh8@upi', 'Bharuch'),
+('Deepak Solanki', '9000000009', '900000000009', 'deepak9@upi', 'Valsad'),
+('Amit Thakor', '9000000010', '900000000010', 'amit10@upi', 'Mehsana'),
+('Bhavesh Parmar', '9000000011', '900000000011', 'bhavesh11@upi', 'Unjha'),
+('Manoj Patel', '9000000012', '900000000012', 'manoj12@upi', 'Rajkot'),
+('Prakash Gohil', '9000000013', '900000000013', 'prakash13@upi', 'Bhavnagar'),
+('Rajesh Makwana', '9000000014', '900000000014', 'rajesh14@upi', 'Amreli'),
+('Chirag Trivedi', '9000000015', '900000000015', 'chirag15@upi', 'Godhra'),
+('Hetal Patel', '9000000016', '900000000016', 'hetal16@upi', 'Kheda'),
+('Dinesh Yadav', '9000000017', '900000000017', 'dinesh17@upi', 'Morbi'),
+('Kalpesh Parmar', '9000000018', '900000000018', 'kalpesh18@upi', 'Patan'),
+('Mukesh Patel', '9000000019', '900000000019', 'mukesh19@upi', 'Vyara'),
+('Ravi Chauhan', '9000000020', '900000000020', 'ravi20@upi', 'Dahod'),
+('Anil Baria', '9000000021', '900000000021', 'anil21@upi', 'Botad'),
+('Pankaj Shah', '9000000022', '900000000022', 'pankaj22@upi', 'Surendranagar'),
+('Gautam Patel', '9000000023', '900000000023', 'gautam23@upi', 'Dwarka'),
+('Jignesh Desai', '9000000024', '900000000024', 'jignesh24@upi', 'Junagadh'),
+('Harish Rana', '9000000025', '900000000025', 'harish25@upi', 'Gandhinagar')
+ON DUPLICATE KEY UPDATE Name = VALUES(Name);
+
+-- 4. SLOTS (25 RECORDS)
+INSERT INTO Slots
+(Mandi_ID, Slot_Date, Start_Time, End_Time,
+ Max_Capacity_Tons, Booked_Capacity_Tons)
+VALUES
+(1, '2026-10-12', '08:00:00', '10:00:00', 50, 15),
+(2, '2026-10-12', '08:00:00', '10:00:00', 80, 25),
+(3, '2026-10-12', '09:00:00', '11:00:00', 40, 10),
+(4, '2026-10-12', '10:00:00', '12:00:00', 70, 30),
+(5, '2026-10-12', '08:00:00', '10:00:00', 35, 12),
+(6, '2026-10-13', '08:00:00', '10:00:00', 45, 18),
+(7, '2026-10-13', '09:00:00', '11:00:00', 30, 10),
+(8, '2026-10-13', '10:00:00', '12:00:00', 40, 20),
+(9, '2026-10-13', '08:00:00', '10:00:00', 60, 22),
+(10, '2026-10-13', '11:00:00', '13:00:00', 50, 15),
+(11, '2026-10-14', '08:00:00', '10:00:00', 45, 16),
+(12, '2026-10-14', '09:00:00', '11:00:00', 55, 20),
+(13, '2026-10-14', '10:00:00', '12:00:00', 30, 12),
+(14, '2026-10-14', '08:00:00', '10:00:00', 65, 25),
+(15, '2026-10-14', '11:00:00', '13:00:00', 35, 14),
+(16, '2026-10-15', '08:00:00', '10:00:00', 40, 18),
+(17, '2026-10-15', '09:00:00', '11:00:00', 50, 20),
+(18, '2026-10-15', '10:00:00', '12:00:00', 25, 8),
+(19, '2026-10-15', '08:00:00', '10:00:00', 35, 10),
+(20, '2026-10-15', '11:00:00', '13:00:00', 45, 20),
+(21, '2026-10-16', '08:00:00', '10:00:00', 50, 25),
+(22, '2026-10-16', '09:00:00', '11:00:00', 30, 10),
+(23, '2026-10-16', '10:00:00', '12:00:00', 40, 15),
+(24, '2026-10-16', '08:00:00', '10:00:00', 25, 8),
+(25, '2026-10-16', '11:00:00', '13:00:00', 35, 12);
+
+-- 5. BOOKINGS (25 RECORDS)
+INSERT INTO Bookings
+(Farmer_ID, Slot_ID, Produce_ID, Estimated_Weight_Tons,
+ Booking_Status, Token_Number)
+VALUES
+(1, 1, 1, 10, 'Confirmed', 'AG-T001'),
+(2, 2, 2, 15, 'Checked-In', 'AG-T002'),
+(3, 3, 3, 8, 'Completed', 'AG-T003'),
+(4, 4, 4, 12, 'Confirmed', 'AG-T004'),
+(5, 5, 5, 6, 'Completed', 'AG-T005'),
+(6, 6, 6, 10, 'Confirmed', 'AG-T006'),
+(7, 7, 7, 7, 'Checked-In', 'AG-T007'),
+(8, 8, 8, 9, 'Completed', 'AG-T008'),
+(9, 9, 9, 11, 'Confirmed', 'AG-T009'),
+(10, 10, 10, 8, 'Cancelled', 'AG-T010'),
+(11, 11, 11, 13, 'Confirmed', 'AG-T011'),
+(12, 12, 12, 5, 'Completed', 'AG-T012'),
+(13, 13, 13, 14, 'Checked-In', 'AG-T013'),
+(14, 14, 14, 16, 'Confirmed', 'AG-T014'),
+(15, 15, 15, 6, 'Completed', 'AG-T015'),
+(16, 16, 16, 9, 'Confirmed', 'AG-T016'),
+(17, 17, 17, 12, 'Checked-In', 'AG-T017'),
+(18, 18, 18, 7, 'Completed', 'AG-T018'),
+(19, 19, 19, 10, 'Confirmed', 'AG-T019'),
+(20, 20, 20, 8, 'Cancelled', 'AG-T020'),
+(21, 21, 21, 15, 'Completed', 'AG-T021'),
+(22, 22, 22, 6, 'Confirmed', 'AG-T022'),
+(23, 23, 23, 9, 'Checked-In', 'AG-T023'),
+(24, 24, 24, 11, 'Completed', 'AG-T024'),
+(25, 25, 25, 7, 'Confirmed', 'AG-T025')
+ON DUPLICATE KEY UPDATE Token_Number = VALUES(Token_Number);
+
+-- 6. WAREHOUSES (25 RECORDS)
+INSERT INTO Warehouses
+(Mandi_ID, Warehouse_Type, Total_Capacity, Occupied_Capacity)
+VALUES
+(1, 'Dry Storage', 200, 80),
+(2, 'Silo', 300, 120),
+(3, 'Cold Storage', 150, 60),
+(4, 'Dry Storage', 180, 75),
+(5, 'Silo', 100, 25),
+(6, 'Cold Storage', 120, 45),
+(7, 'Dry Storage', 160, 50),
+(8, 'Silo', 200, 90),
+(9, 'Dry Storage', 250, 100),
+(10, 'Cold Storage', 130, 40),
+(11, 'Silo', 220, 110),
+(12, 'Dry Storage', 180, 65),
+(13, 'Cold Storage', 100, 30),
+(14, 'Silo', 280, 140),
+(15, 'Dry Storage', 150, 55),
+(16, 'Cold Storage', 125, 45),
+(17, 'Silo', 240, 100),
+(18, 'Dry Storage', 110, 35),
+(19, 'Cold Storage', 130, 50),
+(20, 'Silo', 190, 80),
+(21, 'Dry Storage', 210, 90),
+(22, 'Cold Storage', 100, 25),
+(23, 'Silo', 170, 60),
+(24, 'Dry Storage', 140, 45),
+(25, 'Cold Storage', 115, 35);
+
+-- 7. TRADERS (25 RECORDS)
+INSERT INTO Traders
+(Name, License_No, Phone)
+VALUES
+('Shree Traders', 'AGR-LIC-1001', '9100000001'),
+('Patel Agro', 'AGR-LIC-1002', '9100000002'),
+('Green Harvest Ltd', 'AGR-LIC-1003', '9100000003'),
+('Krishna Commodities', 'AGR-LIC-1004', '9100000004'),
+('Anand Grain Traders', 'AGR-LIC-1005', '9100000005'),
+('Gujarat Agro Trade', 'AGR-LIC-1006', '9100000006'),
+('Fresh Crop Traders', 'AGR-LIC-1007', '9100000007'),
+('Shakti Enterprises', 'AGR-LIC-1008', '9100000008'),
+('Farm Gate Traders', 'AGR-LIC-1009', '9100000009'),
+('Royal Grain Market', 'AGR-LIC-1010', '9100000010'),
+('Sunrise Agro', 'AGR-LIC-1011', '9100000011'),
+('Om Sai Traders', 'AGR-LIC-1012', '9100000012'),
+('Agri Commodity House', 'AGR-LIC-1013', '9100000013'),
+('National Crop Buyers', 'AGR-LIC-1014', '9100000014'),
+('Sardar Agro Agency', 'AGR-LIC-1015', '9100000015'),
+('Unity Farm Products', 'AGR-LIC-1016', '9100000016'),
+('Prime Harvest Traders', 'AGR-LIC-1017', '9100000017'),
+('Western Agro Supply', 'AGR-LIC-1018', '9100000018'),
+('New India Traders', 'AGR-LIC-1019', '9100000019'),
+('Krishi Market House', 'AGR-LIC-1020', '9100000020'),
+('Shivam Grain Traders', 'AGR-LIC-1021', '9100000021'),
+('Reliable Agro Link', 'AGR-LIC-1022', '9100000022'),
+('National Food Traders', 'AGR-LIC-1023', '9100000023'),
+('Unity Crop Buyers', 'AGR-LIC-1024', '9100000024'),
+('Prosper Agro Traders', 'AGR-LIC-1025', '9100000025')
+ON DUPLICATE KEY UPDATE License_No = VALUES(License_No);
+
+-- 8. TRANSACTIONS (25 RECORDS)
+INSERT INTO Transactions
+(Booking_ID, Trader_ID, Warehouse_ID, Actual_Weight,
+ Quality_Grade, Price_Per_Ton, Payment_Status)
+VALUES
+(1, 1, 1, 9.8, 'Grade A', 25000, 'Released'),
+(2, 2, 2, 14.5, 'Grade B', 22000, 'Pending'),
+(3, 3, 3, 7.8, 'Grade A', 30000, 'Released'),
+(4, 4, 4, 11.5, 'Grade B', 18000, 'Pending'),
+(5, 5, 5, 5.9, 'Grade A', 20000, 'Released'),
+(6, 6, 6, 9.7, 'Grade B', 24000, 'Pending'),
+(7, 7, 7, 6.8, 'Grade A', 32000, 'Released'),
+(8, 8, 8, 8.7, 'Grade C', 15000, 'Failed'),
+(9, 9, 9, 10.8, 'Grade A', 28000, 'Released'),
+(10, 10, 10, 7.5, 'Grade B', 19000, 'Pending'),
+(11, 11, 11, 12.6, 'Grade A', 26000, 'Released'),
+(12, 12, 12, 4.8, 'Grade B', 17000, 'Pending'),
+(13, 13, 13, 13.5, 'Grade C', 14000, 'Failed'),
+(14, 14, 14, 15.5, 'Grade A', 35000, 'Released'),
+(15, 15, 15, 5.8, 'Grade B', 21000, 'Pending'),
+(16, 16, 16, 8.7, 'Grade A', 23000, 'Released'),
+(17, 17, 17, 11.8, 'Grade B', 27000, 'Pending'),
+(18, 18, 18, 6.7, 'Grade A', 16000, 'Released'),
+(19, 19, 19, 9.8, 'Grade C', 12000, 'Failed'),
+(20, 20, 20, 7.5, 'Grade B', 19000, 'Pending'),
+(21, 21, 21, 14.7, 'Grade A', 40000, 'Released'),
+(22, 22, 22, 5.8, 'Grade B', 18000, 'Pending'),
+(23, 23, 23, 8.8, 'Grade A', 22000, 'Released'),
+(24, 24, 24, 10.7, 'Grade B', 25000, 'Pending'),
+(25, 25, 25, 6.8, 'Grade A', 30000, 'Released')
+ON DUPLICATE KEY UPDATE Actual_Weight = VALUES(Actual_Weight);
+
+-- 9. DEFAULT ADMIN USER (admin / Admin@123)
+-- Password hash generated with bcrypt 10 rounds: $2a$10$wEeVqD29.Z5p07nO6kZpueqYJ81.w99sM1J3Z2QhBfQ7X2jN6l9u6 (or standard test hash)
+INSERT INTO User_Login (Username, Password_Hash, User_Role, Account_Status)
+VALUES ('admin', '$2a$10$n4qGf.sV.9z1o3rYdZ7nQeZzY9n9Zk0mJ1X8xV4aO.W6g8H9f7y6G', 'Admin', 'Active')
+ON DUPLICATE KEY UPDATE User_Role = 'Admin';

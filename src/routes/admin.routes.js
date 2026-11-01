@@ -1,0 +1,75 @@
+const express = require('express');
+const AdminController = require('../controllers/admin.controller');
+const BookingController = require('../controllers/booking.controller');
+const FarmerController = require('../controllers/farmer.controller');
+const SlotController = require('../controllers/slot.controller');
+const TransactionController = require('../controllers/transaction.controller');
+
+const { authenticate, requireRole, requireActiveRole } = require('../middleware/authenticate');
+const validateRequest = require('../middleware/validateRequest');
+const { bookingIdParamSchema, filterBookingsQuerySchema } = require('../validators/booking.validator');
+const { updateBookingStatusSchema, updatePaymentStatusSchema } = require('../validators/admin.validator');
+const { transactionIdParamSchema } = require('../validators/transaction.validator');
+
+const router = express.Router();
+
+// Enforce authentication & live database role check for all admin routes (guards against stale JWTs)
+router.use(authenticate, requireActiveRole('Admin', 'Mandi_Officer'));
+
+// Dashboard Overview (supports ?date=YYYY-MM-DD&mandiId=1)
+router.get('/dashboard', AdminController.getDashboard);
+
+// User & Role Management (Strictly Admin only: Officers cannot view or manage user accounts)
+router.get('/users', requireActiveRole('Admin'), AdminController.getAllUsers);
+router.get('/users/:id', requireActiveRole('Admin'), AdminController.getUserById);
+router.patch('/users/:id/role', requireActiveRole('Admin'), AdminController.updateUserRole);
+router.post('/users/assign-role', requireActiveRole('Admin'), AdminController.assignUserRole);
+
+// Audit History (Protected, read-only audit records for Admin only)
+router.get('/audit-logs', requireActiveRole('Admin'), AdminController.getAuditLogs);
+
+// CSV Data Exports (Protected, formula-injection safe RFC 4180)
+router.get('/export/bookings.csv', AdminController.exportBookingsCsv);
+router.get('/export/transactions.csv', AdminController.exportTransactionsCsv);
+router.get('/export/farmers.csv', AdminController.exportFarmersCsv);
+router.get('/export/utilization.csv', AdminController.exportUtilizationCsv);
+
+// Booking Management
+router.get('/bookings', validateRequest({ query: filterBookingsQuerySchema }), BookingController.getAllBookings);
+router.get('/bookings/:id', validateRequest({ params: bookingIdParamSchema }), BookingController.getBookingById);
+router.patch(
+  '/bookings/:id/status',
+  validateRequest({ params: bookingIdParamSchema, body: updateBookingStatusSchema }),
+  BookingController.updateBookingStatus
+);
+
+// Farmer Directory
+router.get('/farmers', FarmerController.getAllFarmers);
+router.get('/farmers/:id', FarmerController.getFarmerById);
+
+// Slot Capacity & Hybrid Limit Management (Admin & Officer oversight; limit updates restricted to Admin)
+router.get('/slots', SlotController.getAllSlots);
+router.get('/slots/utilization', SlotController.getUtilization);
+router.get('/slots/:id/bookings', SlotController.getSlotBookings);
+router.patch('/slots/:id/limits', requireActiveRole('Admin'), SlotController.updateSlotLimits);
+router.post('/slots/:id/reconcile', requireActiveRole('Admin'), SlotController.reconcileSlot);
+router.post('/slots/reconcile-all', requireActiveRole('Admin'), SlotController.reconcileSlot);
+
+// Transaction & Payment Management
+router.get('/transactions', TransactionController.getAllTransactions);
+router.get('/transactions/summary', TransactionController.getSummary);
+router.get('/transactions/:id', validateRequest({ params: transactionIdParamSchema }), TransactionController.getTransactionById);
+router.patch(
+  '/transactions/:id/payment-status',
+  validateRequest({ params: transactionIdParamSchema, body: updatePaymentStatusSchema }),
+  TransactionController.updatePaymentStatus
+);
+
+// Reference data
+router.get('/traders', TransactionController.getAllTraders);
+router.get('/warehouses', TransactionController.getAllWarehouses);
+
+// Database Maintenance (Exclusively restricted to Admin role with production guards)
+router.post('/reset-database', requireActiveRole('Admin'), AdminController.resetDatabase);
+
+module.exports = router;
