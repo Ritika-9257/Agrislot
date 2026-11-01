@@ -121,9 +121,13 @@ function ProfileContent() {
         message: 'Your APMC profile details have been saved and synchronized with the mandi database!'
       });
     } catch (err) {
+      let errorMsg = err.message || 'Failed to update profile. Please try again.';
+      if (errorMsg.includes('Resource not found') || errorMsg.includes('ROUTE_NOT_FOUND')) {
+        errorMsg = 'Render Web Service is currently finishing the deployment of the new profile route. If you just deployed, click "Manual Deploy" -> "Deploy latest commit" on Render dashboard, wait 60 seconds, and retry.';
+      }
       setFeedback({
         type: 'error',
-        message: err.message || 'Failed to update profile. Please try again.'
+        message: errorMsg
       });
     } finally {
       setLoading(false);
