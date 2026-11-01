@@ -95,26 +95,33 @@ const AdminController = {
 
   async assignUserRole(req, res, next) {
     try {
-      const { email, username, userId, role } = req.body;
+      const { email, username, identifier: rawId, userId, role } = req.body;
       if (!role) {
         throw new AppError("Role is required: { role: 'Admin' | 'Farmer' | 'Mandi_Officer' }", 400, 'ROLE_REQUIRED');
       }
 
       let targetId = userId;
-      if (!targetId && (email || username)) {
-        const identifier = (email || username).trim();
-        let target = await UserRepository.findByEmail(identifier);
+      const rawInput = (rawId || email || username || '').trim();
+      if (!targetId && rawInput) {
+        // 1. Try by exact email
+        let target = await UserRepository.findByEmail(rawInput);
+        // 2. Try by username
         if (!target) {
-          target = await UserRepository.findByUsername(identifier);
+          target = await UserRepository.findByUsername(rawInput);
+        }
+        // 3. Try by numeric User ID (e.g. 4 or #4)
+        const cleanNumeric = rawInput.replace(/^#/, '').trim();
+        if (!target && !isNaN(cleanNumeric) && cleanNumeric !== '') {
+          target = await UserRepository.findById(parseInt(cleanNumeric, 10));
         }
         if (!target) {
-          throw new AppError(`No user found with email or username '${identifier}'. Please ensure they register first.`, 404, 'USER_NOT_FOUND');
+          throw new AppError(`No user found with email, username, or ID '${rawInput}'. Please ensure they register first.`, 404, 'USER_NOT_FOUND');
         }
         targetId = target.User_ID;
       }
 
       if (!targetId) {
-        throw new AppError('Either userId, email, or username is required', 400, 'TARGET_REQUIRED');
+        throw new AppError('Either userId, email, username, or identifier is required', 400, 'TARGET_REQUIRED');
       }
 
       const updated = await AdminService.updateUserRole({
@@ -125,7 +132,7 @@ const AdminController = {
       });
 
       return successResponse(res, {
-        message: `User role successfully updated to ${role}`,
+        message: `User role successfully updated to ${role} for ${updated.Username || targetId}`,
         data: updated
       });
     } catch (err) {

@@ -1509,6 +1509,85 @@ test('55. Data Integrity: Farmer privacy is maintained (farmer cannot see other 
   assert.ok(!visibleBookings.some(b => b.Farmer_ID === 2), 'Farmer 2 data must never be visible to Farmer 1');
 });
 
+test('56. Dynamic Authorization: Admin can allocate Mandi_Officer and Admin roles by email, username, or user ID', async (t) => {
+  const AdminController = require('../src/controllers/admin.controller');
+  const UserRepository = require('../src/repositories/user.repository');
+  const AdminService = require('../src/services/admin.service');
+
+  const origFindByEmail = UserRepository.findByEmail;
+  const origFindByUsername = UserRepository.findByUsername;
+  const origFindById = UserRepository.findById;
+  const origUpdateUserRole = AdminService.updateUserRole;
+
+  const mockUsers = [
+    { User_ID: 4, Username: 'google_gouravgodara6125_5665', Email: 'gouravgodara6125@gmail.com', User_Role: 'Farmer' },
+    { User_ID: 5, Username: 'google_genuine.farmer_9999', Email: 'genuine.farmer@gmail.com', User_Role: 'Farmer' }
+  ];
+
+  UserRepository.findByEmail = async (email) => mockUsers.find(u => u.Email === email) || null;
+  UserRepository.findByUsername = async (uname) => mockUsers.find(u => u.Username === uname) || null;
+  UserRepository.findById = async (id) => mockUsers.find(u => u.User_ID === id) || null;
+
+  let assignedRole = null;
+  let targetAssignedId = null;
+  AdminService.updateUserRole = async ({ targetUserId, newRole }) => {
+    targetAssignedId = targetUserId;
+    assignedRole = newRole;
+    return { User_ID: targetUserId, User_Role: newRole };
+  };
+
+  try {
+    // 1. Allocate Mandi_Officer role using username (e.g. google_gouravgodara6125_5665)
+    const req1 = {
+      body: { username: 'google_gouravgodara6125_5665', role: 'Mandi_Officer' },
+      user: { userId: 1, username: 'admin' }
+    };
+    let jsonResult1 = null;
+    const res1 = {
+      status(s) { return this; },
+      json(data) { jsonResult1 = data; return this; }
+    };
+    await AdminController.assignUserRole(req1, res1, () => {});
+    assert.strictEqual(targetAssignedId, 4);
+    assert.strictEqual(assignedRole, 'Mandi_Officer', 'Should promote to Mandi_Officer via username');
+    assert.strictEqual(jsonResult1.success, true);
+
+    // 2. Allocate Admin role using email (e.g. genuine.farmer@gmail.com)
+    const req2 = {
+      body: { email: 'genuine.farmer@gmail.com', role: 'Admin' },
+      user: { userId: 1, username: 'admin' }
+    };
+    let jsonResult2 = null;
+    const res2 = {
+      status(s) { return this; },
+      json(data) { jsonResult2 = data; return this; }
+    };
+    await AdminController.assignUserRole(req2, res2, () => {});
+    assert.strictEqual(targetAssignedId, 5);
+    assert.strictEqual(assignedRole, 'Admin', 'Should promote to Admin via email');
+    assert.strictEqual(jsonResult2.success, true);
+
+    // 3. Allocate Mandi_Officer role using numeric ID ('#4' or '4')
+    const req3 = {
+      body: { identifier: '#4', role: 'Mandi_Officer' },
+      user: { userId: 1, username: 'admin' }
+    };
+    let jsonResult3 = null;
+    const res3 = {
+      status(s) { return this; },
+      json(data) { jsonResult3 = data; return this; }
+    };
+    await AdminController.assignUserRole(req3, res3, () => {});
+    assert.strictEqual(targetAssignedId, 4);
+    assert.strictEqual(assignedRole, 'Mandi_Officer', 'Should allocate via numeric ID');
+  } finally {
+    UserRepository.findByEmail = origFindByEmail;
+    UserRepository.findByUsername = origFindByUsername;
+    UserRepository.findById = origFindById;
+    AdminService.updateUserRole = origUpdateUserRole;
+  }
+});
+
 test.after(async () => {
   const { closePool } = require('../src/config/database');
   await closePool();

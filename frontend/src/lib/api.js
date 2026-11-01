@@ -303,11 +303,11 @@ export const AgriSlotAPI = {
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ role })
     }),
-  assignUserRole: ({ email, username, userId, role }, token) =>
+  assignUserRole: ({ email, username, identifier, userId, role }, token) =>
     apiRequest('/admin/users/assign-role', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ email, username, userId, role })
+      body: JSON.stringify({ email, username, identifier, userId, role })
     }),
   getAdminBookings: (token, filters = {}) => {
     const q = new URLSearchParams();

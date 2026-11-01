@@ -541,11 +541,12 @@ function AdminPortalContent() {
     }
   };
 
-  // Quick Promote User by Email
+  // Quick Promote User by Email, Username, or ID
   const handlePromoteByEmail = async (e) => {
     e.preventDefault();
-    if (!emailInput.trim()) {
-      setRoleFeedback({ type: 'error', text: 'Please enter a valid user email address.' });
+    const input = emailInput.trim();
+    if (!input) {
+      setRoleFeedback({ type: 'error', text: 'Please enter a valid user email address, username, or ID.' });
       return;
     }
 
@@ -553,20 +554,22 @@ function AdminPortalContent() {
     setRoleFeedback({ type: '', text: '' });
     try {
       const res = await AgriSlotAPI.assignUserRole({
-        email: emailInput.trim(),
+        identifier: input,
+        email: input,
+        username: input,
         role: selectedRoleForEmail
       }, activeAuthToken);
 
       setRoleFeedback({
         type: 'success',
-        text: res?.message || `✓ Role successfully granted to ${emailInput.trim()}!`
+        text: res?.message || `✓ Role '${selectedRoleForEmail}' successfully granted to '${input}'!`
       });
       setEmailInput('');
       loadUsers();
     } catch (err) {
       setRoleFeedback({
         type: 'error',
-        text: err.message || `Failed to update role for ${emailInput.trim()}. Please ensure they register first.`
+        text: err.message || `Failed to update role for '${input}'. Please check the email or username.`
       });
     } finally {
       setEmailPromoting(false);
@@ -2505,8 +2508,8 @@ function AdminPortalContent() {
 
             <form onSubmit={handlePromoteByEmail} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <input
-                type="email"
-                placeholder="User Email ID (e.g. officer@mandi.gov.in)"
+                type="text"
+                placeholder="User Email, Username, or ID (e.g. user@agrislot.com or google_gourav...)"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
                 className="bg-gray-50 border-2 border-navy-border rounded-xl px-4 py-2.5 text-xs font-bold text-navy-border focus:bg-white focus:outline-none"
@@ -2529,7 +2532,7 @@ function AdminPortalContent() {
                 className="py-2.5 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-2"
               >
                 {emailPromoting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4 text-saffron" />}
-                <span>Promote User</span>
+                <span>Allocate Role</span>
               </button>
             </form>
           </div>
@@ -2564,46 +2567,84 @@ function AdminPortalContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
-                  {users.map((u) => (
-                    <tr key={u.User_ID} className="hover:bg-gray-50">
-                      <td className="py-3 px-3 font-mono font-bold">#{u.User_ID}</td>
-                      <td className="py-3 px-3">
-                        <div className="font-extrabold">{u.Username}</div>
-                        <div className="text-[10px] text-gray-400">{u.Email || 'No email attached'}</div>
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
-                          u.User_Role === 'Admin'
-                            ? 'bg-purple-100 text-purple-900 border-purple-300'
-                            : u.User_Role === 'Mandi_Officer'
-                            ? 'bg-sky-100 text-sky-900 border-sky-300'
-                            : 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                        }`}>
-                          {u.User_Role}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        {u.User_Role !== 'Admin' && (
-                          <button
-                            type="button"
-                            onClick={() => setRoleActionModal({ open: true, user: u, targetRole: 'Admin' })}
-                            className="px-2.5 py-1 bg-purple-700 text-white rounded text-[11px] font-bold"
-                          >
-                            Make Admin
-                          </button>
-                        )}
-                        {u.User_Role === 'Admin' && u.User_ID !== authUser?.userId && (
-                          <button
-                            type="button"
-                            onClick={() => setRoleActionModal({ open: true, user: u, targetRole: 'Farmer' })}
-                            className="px-2.5 py-1 bg-gray-200 text-gray-700 rounded text-[11px] font-bold hover:bg-gray-300"
-                          >
-                            Revoke Admin
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {users.map((u) => {
+                    const displayEmail = u.Email || (u.Username.startsWith('google_') ? `${u.Username.split('_')[1]}@gmail.com` : 'No email attached');
+                    const isSelf = u.User_ID === authUser?.userId;
+
+                    return (
+                      <tr key={u.User_ID} className="hover:bg-gray-50">
+                        <td className="py-3 px-3 font-mono font-bold">#{u.User_ID}</td>
+                        <td className="py-3 px-3">
+                          <div className="font-extrabold text-navy-border flex items-center gap-1.5">
+                            <span>{u.Full_Name || u.Username}</span>
+                            {u.Google_Sub && (
+                              <span className="px-1.5 py-0.2 bg-blue-50 text-[9px] font-mono font-bold text-blue-600 rounded border border-blue-200">
+                                Google
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-forest font-mono font-bold mt-0.5">
+                            {displayEmail}
+                          </div>
+                          {u.Full_Name && u.Username !== u.Full_Name && (
+                            <div className="text-[10px] text-gray-400 font-mono">
+                              Username: {u.Username}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                            u.User_Role === 'Admin'
+                              ? 'bg-purple-100 text-purple-900 border-purple-300'
+                              : u.User_Role === 'Mandi_Officer'
+                              ? 'bg-sky-100 text-sky-900 border-sky-300'
+                              : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          }`}>
+                            {u.User_Role}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                            {isSelf ? (
+                              <span className="px-2 py-1 rounded bg-slate-100 text-slate-500 font-mono text-[10px] font-bold border border-slate-200">
+                                Current Session
+                              </span>
+                            ) : (
+                              <>
+                                {u.User_Role !== 'Admin' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRoleActionModal({ open: true, user: u, targetRole: 'Admin' })}
+                                    className="px-2.5 py-1 bg-purple-700 hover:bg-purple-800 text-white rounded text-[11px] font-bold shadow-sm transition-all"
+                                  >
+                                    Make Admin
+                                  </button>
+                                )}
+                                {u.User_Role !== 'Mandi_Officer' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRoleActionModal({ open: true, user: u, targetRole: 'Mandi_Officer' })}
+                                    className="px-2.5 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded text-[11px] font-bold shadow-sm transition-all"
+                                  >
+                                    Make Officer
+                                  </button>
+                                )}
+                                {u.User_Role !== 'Farmer' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRoleActionModal({ open: true, user: u, targetRole: 'Farmer' })}
+                                    className="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-300 rounded text-[11px] font-bold transition-all"
+                                  >
+                                    {u.User_Role === 'Admin' ? 'Revoke Admin' : 'Revoke Officer'}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
