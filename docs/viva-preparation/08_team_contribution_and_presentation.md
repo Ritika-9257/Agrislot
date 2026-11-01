@@ -15,7 +15,7 @@
 | **7** | **Advanced Database Objects** | Stored Procedures (`Insert_Farmer`, `Display_First_Five`), Cursors, Functions (`Total_Booking_Weight`), Triggers (`Audit_Farmer_Update`), Views. | Database objects summary table |
 | **8** | **Role-Based Access Control (RBAC)** | Role segregation: Farmer vs Mandi Officer vs Admin. Stale token prevention via live DB role lookup. Self-demotion safeguards. | RBAC permissions matrix |
 | **9** | **Live System Demo** | Step 1: Farmer books 8 Tons $\rightarrow$ Step 2: Officer verifies token at gate $\rightarrow$ Step 3: Admin inspects live MySQL capacity and audit trail. | Live web application running on localhost |
-| **10** | **Conclusion & Learnings** | Zero overselling verified, 48 passing unit/integration tests, 25+ real records per table, full relational integrity achieved. | Test pass output & summary metrics |
+| **10** | **Conclusion & Learnings** | Zero overselling verified, 56 passing unit, SSL, integration & HTTP tests, 25+ real records per table, full relational integrity achieved. | Test pass output & summary metrics |
 
 ---
 
@@ -25,7 +25,7 @@
 1. Ensure MySQL is running on `127.0.0.1:3307` (`mysqld is alive`).
 2. Run backend in Terminal 1: `cd backend && npm run dev` (Listening on `http://localhost:5001`).
 3. Run frontend in Terminal 2: `cd frontend && npm run dev` (Listening on `http://localhost:3000`).
-4. Keep MySQL CLI open in Terminal 3: `mysql -u root -p6125 -P 3307 agrislot`.
+4. Keep MySQL CLI open in Terminal 3: `mysql -u root -p -P 3307 agrislot`.
 
 ---
 
@@ -66,7 +66,7 @@ SELECT * FROM application_audit_log ORDER BY Audit_ID DESC LIMIT 3;
 
 #### Minute 5: Wrap-Up & Test Verification
 - **Action:** Switch to Terminal 4 and run `npm test`.
-- **Spoken:** *"All 48 unit, integration, and concurrency simulation tests pass with zero errors, verifying atomicity, single-credit cancellation, and RBAC defense. We are ready for your questions."*
+- **Spoken:** *"All 56 unit, SSL compatibility, live database integration, and HTTP dispatch tests pass with zero errors, verifying atomicity, single-credit cancellation, and RBAC defense. We are ready for your questions."*
 
 ---
 
@@ -78,7 +78,7 @@ To ensure seamless credit sharing during your evaluation, here is the official d
 | :--- | :--- | :--- |
 | **System Architecture & Database Design** | **Gourav Godara** | • Designed 3NF Relational Schema (11 tables, constraints, foreign keys).<br>• Implemented atomic transaction repository with `SELECT ... FOR UPDATE`.<br>• Configured MySQL connection pooling, database triggers, and audit logging.<br>• Built RBAC backend middleware and Google OAuth 2.0 user linking. |
 | **Frontend Portals & Responsive UI** | **Soham** | • Developed Next.js 14 Farmer Slot Booking Interface (`/farmer`).<br>• Implemented dynamic 20-minute Green/Red slot availability grid.<br>• Built Mandi Officer Gate Clearance Desk (`/admin?tab=verify`).<br>• Created Gate Pass Modal with QR code generation and SMS simulation. |
-| **Testing, Advanced SQL & Evaluation Docs** | **Ritika** | • Implemented Lab 10 Stored Procedures, Functions, and Cursors.<br>• Created Lab 11 Relational Views and B-Tree Performance Indexes.<br>• Developed automated test suite (48 passing tests in `tests/*.test.js`).<br>• Authored project documentation, viva defense guide, and presentation slides. |
+| **Testing, Advanced SQL & Evaluation Docs** | **Ritika** | • Implemented Lab 10 Stored Procedures, Functions, and Cursors.<br>• Created Lab 11 Relational Views and B-Tree Performance Indexes.<br>• Developed automated test suites (56 passing tests across unit, SSL, integration & HTTP routes).<br>• Authored project documentation, viva defense guide, and presentation slides. |
 
 ---
 

@@ -175,9 +175,9 @@ Edit `.env` to match your MySQL credentials:
 ```env
 PORT=5001
 DB_HOST=127.0.0.1
-DB_PORT=3306
+DB_PORT=3307
 DB_USER=root
-DB_PASSWORD=6125
+DB_PASSWORD=your_mysql_password
 DB_NAME=agrislot
 JWT_SECRET=your_jwt_secret_key_minimum_32_characters
 ```
