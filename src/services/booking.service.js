@@ -288,7 +288,17 @@ const BookingService = {
   /**
    * Admin booking status transition management
    */
-  async updateBookingStatus(bookingId, newStatus, changedBy = 'admin') {
+  async updateBookingStatus(bookingId, newStatus, options = {}) {
+    let changedBy = 'admin';
+    let officerId = null;
+
+    if (typeof options === 'string') {
+      changedBy = options;
+    } else if (options && typeof options === 'object') {
+      changedBy = options.changedBy || options.username || 'admin';
+      officerId = options.officerId || null;
+    }
+
     const current = await BookingRepository.findById(bookingId);
     if (!current) {
       throw new AppError(`Booking with ID ${bookingId} not found`, 404, 'BOOKING_NOT_FOUND');
@@ -301,10 +311,12 @@ const BookingService = {
 
     // Validate state machine transitions
     const validTransitions = {
-      'Confirmed': ['Checked-In', 'Cancelled'],
-      'Checked-In': ['Completed'],
+      'Confirmed': ['Checked-In', 'In Process', 'Cancelled', 'No-Show'],
+      'Checked-In': ['In Process', 'Completed', 'Cancelled'],
+      'In Process': ['Completed'],
       'Completed': [],
-      'Cancelled': []
+      'Cancelled': [],
+      'No-Show': []
     };
 
     const allowed = validTransitions[current.Booking_Status] || [];
@@ -316,28 +328,39 @@ const BookingService = {
       );
     }
 
-    await BookingRepository.updateStatus(bookingId, newStatus);
+    await BookingRepository.updateStatus(bookingId, newStatus, { officerId });
 
     AuditService.logAudit({
       tableName: 'Bookings',
       operationType: 'STATUS_UPDATE',
       recordId: bookingId,
       oldData: { Booking_Status: current.Booking_Status },
-      newData: { Booking_Status: newStatus },
+      newData: { Booking_Status: newStatus, Officer_ID: officerId },
       changedBy
     });
 
     return {
       bookingId,
       previousStatus: current.Booking_Status,
-      bookingStatus: newStatus
+      bookingStatus: newStatus,
+      officerId
     };
   },
 
   /**
    * Fast-track gate check-in by token with automated weighbridge tare & gross calculation
    */
-  async checkInByToken({ token, grossWeightKg, tareWeightKg, bay }) {
+  async checkInByToken({ token, grossWeightKg, tareWeightKg, bay }, options = {}) {
+    let changedBy = 'weighbridge_operator';
+    let officerId = null;
+
+    if (typeof options === 'string') {
+      changedBy = options;
+    } else if (options && typeof options === 'object') {
+      changedBy = options.changedBy || options.username || 'weighbridge_operator';
+      officerId = options.officerId || null;
+    }
+
     if (!token) {
       throw new AppError('Gate-pass token is required for check-in', 400, 'TOKEN_REQUIRED');
     }
@@ -349,14 +372,20 @@ const BookingService = {
     if (booking.Booking_Status === 'Cancelled') {
       throw new AppError('Cannot admit vehicle: Booking has been cancelled', 400, 'BOOKING_CANCELLED');
     }
+    if (booking.Booking_Status === 'No-Show') {
+      throw new AppError('Cannot admit vehicle: Booking was marked as No-Show', 400, 'BOOKING_NO_SHOW');
+    }
     if (booking.Booking_Status === 'Completed') {
       throw new AppError('Cannot admit vehicle: Booking has already been completed and discharged', 400, 'BOOKING_ALREADY_COMPLETED');
     }
     if (booking.Booking_Status === 'Checked-In') {
       throw new AppError('Vehicle has already checked in at the weighbridge gate', 409, 'DUPLICATE_CHECK_IN');
     }
+    if (booking.Booking_Status === 'In Process') {
+      throw new AppError('Vehicle has already been admitted and is currently in process', 409, 'DUPLICATE_CHECK_IN');
+    }
 
-    const statusResult = await this.updateBookingStatus(booking.Booking_ID, 'Checked-In', 'weighbridge_operator');
+    const statusResult = await this.updateBookingStatus(booking.Booking_ID, 'Checked-In', { changedBy, officerId });
 
     const declaredWeight = parseFloat(booking.Estimated_Weight_Tons) || 5.0;
     const gross = grossWeightKg ? parseFloat(grossWeightKg) : (declaredWeight * 1000 + 2920);

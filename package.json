@@ -6,8 +6,8 @@
   "scripts": {
     "start": "[ -e node_modules ] || ln -sfn backend/node_modules node_modules 2>/dev/null || true; node src/server.js",
     "dev": "[ -e node_modules ] || ln -sfn backend/node_modules node_modules 2>/dev/null || true; nodemon src/server.js",
-    "test": "[ -e node_modules ] || ln -sfn backend/node_modules node_modules 2>/dev/null || true; NODE_PATH=./backend/node_modules:./node_modules:$NODE_PATH node --test tests/*.test.js",
-    "test:coverage": "[ -e node_modules ] || ln -sfn backend/node_modules node_modules 2>/dev/null || true; NODE_PATH=./backend/node_modules:./node_modules:$NODE_PATH node --test --experimental-test-coverage tests/*.test.js",
+    "test": "[ -e node_modules ] || ln -sfn backend/node_modules node_modules 2>/dev/null || true; NODE_PATH=./backend/node_modules:./node_modules:$NODE_PATH node --test tests/api_http.test.js tests/database_ssl.test.js tests/integration_mysql.test.js tests/unit_and_mock.test.js",
+    "test:coverage": "[ -e node_modules ] || ln -sfn backend/node_modules node_modules 2>/dev/null || true; NODE_PATH=./backend/node_modules:./node_modules:$NODE_PATH node --test --experimental-test-coverage tests/api_http.test.js tests/database_ssl.test.js tests/integration_mysql.test.js tests/unit_and_mock.test.js",
     "check:jsx": "node scripts/check_jsx.js",
     "verify": "node scripts/verify_system.js",
     "db:setup": "bash database/setup_db.sh",

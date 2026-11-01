@@ -114,17 +114,21 @@ test('4. Booking creation validation rules', (t) => {
 test('5. Admin booking status transition validations', (t) => {
   const validConfirmed = updateBookingStatusSchema.safeParse({ Booking_Status: 'Confirmed' });
   const validCheckedIn = updateBookingStatusSchema.safeParse({ Booking_Status: 'Checked-In' });
+  const validInProcess = updateBookingStatusSchema.safeParse({ Booking_Status: 'In Process' });
   const validCompleted = updateBookingStatusSchema.safeParse({ Booking_Status: 'Completed' });
   const validCancelled = updateBookingStatusSchema.safeParse({ Booking_Status: 'Cancelled' });
+  const validNoShow = updateBookingStatusSchema.safeParse({ Booking_Status: 'No-Show' });
 
   assert.strictEqual(validConfirmed.success, true);
   assert.strictEqual(validCheckedIn.success, true);
+  assert.strictEqual(validInProcess.success, true);
   assert.strictEqual(validCompleted.success, true);
   assert.strictEqual(validCancelled.success, true);
+  assert.strictEqual(validNoShow.success, true);
 
   // Unsupported status
-  const invalidStatus = updateBookingStatusSchema.safeParse({ Booking_Status: 'In Process' });
-  assert.strictEqual(invalidStatus.success, false, 'In Process is not in MySQL ENUM');
+  const invalidStatus = updateBookingStatusSchema.safeParse({ Booking_Status: 'Under Review' });
+  assert.strictEqual(invalidStatus.success, false, 'Under Review is not in MySQL ENUM');
 });
 
 test('6. Payment status validation respects schema values (Pending, Released, Failed)', (t) => {

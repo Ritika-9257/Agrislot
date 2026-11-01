@@ -50,6 +50,7 @@ function AdminPortalContent() {
     if (tab === 'confirmed') return 'confirmed';
     if (tab === 'completed') return 'completed';
     if (tab === 'cancelled') return 'cancelled';
+    if (tab === 'no-show' || tab === 'noshow') return 'no-show';
     if (tab === 'slots') return isOfficer ? 'verify' : 'slots';
     if (tab === 'farmers') return isOfficer ? 'verify' : 'farmers';
     if (tab === 'analysis' || tab === 'dbms') return isOfficer ? 'verify' : 'analysis';
@@ -59,7 +60,7 @@ function AdminPortalContent() {
   };
 
   // Active Main Tab:
-  // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'slots' | 'farmers' | 'analysis' | 'access'
+  // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'no-show' | 'slots' | 'farmers' | 'analysis' | 'access'
   const [activeTab, setActiveTab] = useState(() => getTabFromParam(tabParam));
 
   // Sync activeTab whenever URL query changes (e.g. sidebar navigation)
@@ -90,6 +91,8 @@ function AdminPortalContent() {
   const [bookingSearch, setBookingSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [bookingDateFilter, setBookingDateFilter] = useState('');
+  const [mandiFilter, setMandiFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
 
   // Slot Management State
   const [slotsList, setSlotsList] = useState([]);
@@ -301,21 +304,62 @@ function AdminPortalContent() {
   const handleAllowEntry = async (booking) => {
     if (!booking) return;
     const targetToken = booking.Token_Number || booking.Gate_Pass_Token;
+    const nowIso = new Date().toISOString();
+    const officerName = authUser?.name || authUser?.username || 'Mandi Gate Officer';
     try {
-      await AgriSlotAPI.checkIn(targetToken, activeAuthToken).catch(() => null);
-      await AgriSlotAPI.updateBookingStatus(booking.Booking_ID, 'Checked-In', activeAuthToken).catch(() => null);
+      await AgriSlotAPI.updateBookingStatus(booking.Booking_ID, 'Checked-In', activeAuthToken);
 
       setAllBookings(prev =>
-        prev.map(b => (b.Booking_ID === booking.Booking_ID ? { ...b, Booking_Status: 'Checked-In' } : b))
+        prev.map(b => (b.Booking_ID === booking.Booking_ID ? { 
+          ...b, 
+          Booking_Status: 'Checked-In',
+          Check_In_Time: nowIso,
+          Officer_Name: officerName
+        } : b))
       );
 
       if (searchedBooking && searchedBooking.Booking_ID === booking.Booking_ID) {
-        setSearchedBooking(prev => ({ ...prev, Booking_Status: 'Checked-In' }));
+        setSearchedBooking(prev => ({ 
+          ...prev, 
+          Booking_Status: 'Checked-In',
+          Check_In_Time: nowIso,
+          Officer_Name: officerName
+        }));
       }
 
-      setActionSuccessMessage(`✓ Gate clearance granted to Token ${targetToken}. Vehicle is now 'Active / In Process' inside the yard.`);
-    } catch {
+      setActionSuccessMessage(`✓ Gate clearance granted to Token ${targetToken}. Vehicle is now 'Checked-In' inside the yard.`);
+    } catch (err) {
       setActionSuccessMessage(`✓ Token ${targetToken} checked in.`);
+    }
+  };
+
+  // Move to In Process (e.g. Weighbridge cleared, unloading / auction under way)
+  const handleMoveToInProcess = async (booking) => {
+    if (!booking) return;
+    const targetToken = booking.Token_Number || booking.Gate_Pass_Token;
+    const officerName = authUser?.name || authUser?.username || 'Mandi Officer';
+    try {
+      await AgriSlotAPI.updateBookingStatus(booking.Booking_ID, 'In Process', activeAuthToken);
+
+      setAllBookings(prev =>
+        prev.map(b => (b.Booking_ID === booking.Booking_ID ? { 
+          ...b, 
+          Booking_Status: 'In Process',
+          Officer_Name: b.Officer_Name || officerName
+        } : b))
+      );
+
+      if (searchedBooking && searchedBooking.Booking_ID === booking.Booking_ID) {
+        setSearchedBooking(prev => ({ 
+          ...prev, 
+          Booking_Status: 'In Process',
+          Officer_Name: prev.Officer_Name || officerName
+        }));
+      }
+
+      setActionSuccessMessage(`✓ Token ${targetToken} moved to 'In Process' (weighbridge / auction bay).`);
+    } catch (err) {
+      setActionSuccessMessage(`✓ Token ${targetToken} in process.`);
     }
   };
 
@@ -323,20 +367,62 @@ function AdminPortalContent() {
   const handleMarkCompleted = async (booking) => {
     if (!booking) return;
     const targetToken = booking.Token_Number || booking.Gate_Pass_Token;
+    const nowIso = new Date().toISOString();
+    const officerName = authUser?.name || authUser?.username || 'Mandi Officer';
     try {
-      await AgriSlotAPI.updateBookingStatus(booking.Booking_ID, 'Completed', activeAuthToken).catch(() => null);
+      await AgriSlotAPI.updateBookingStatus(booking.Booking_ID, 'Completed', activeAuthToken);
 
       setAllBookings(prev =>
-        prev.map(b => (b.Booking_ID === booking.Booking_ID ? { ...b, Booking_Status: 'Completed' } : b))
+        prev.map(b => (b.Booking_ID === booking.Booking_ID ? { 
+          ...b, 
+          Booking_Status: 'Completed',
+          Completion_Time: nowIso,
+          Officer_Name: b.Officer_Name || officerName
+        } : b))
       );
 
       if (searchedBooking && searchedBooking.Booking_ID === booking.Booking_ID) {
-        setSearchedBooking(prev => ({ ...prev, Booking_Status: 'Completed' }));
+        setSearchedBooking(prev => ({ 
+          ...prev, 
+          Booking_Status: 'Completed',
+          Completion_Time: nowIso,
+          Officer_Name: prev.Officer_Name || officerName
+        }));
       }
 
-      setActionSuccessMessage(`✓ Produce delivery for Token ${targetToken} completed. Saved in MySQL Completed ledger.`);
-    } catch {
+      setActionSuccessMessage(`✓ Produce delivery for Token ${targetToken} completed. Permanently preserved in MySQL database archive.`);
+    } catch (err) {
       setActionSuccessMessage(`✓ Token ${targetToken} marked completed.`);
+    }
+  };
+
+  // Mark as No-Show
+  const handleMarkNoShow = async (booking) => {
+    if (!booking) return;
+    const targetToken = booking.Token_Number || booking.Gate_Pass_Token;
+    const officerName = authUser?.name || authUser?.username || 'Mandi Officer';
+    try {
+      await AgriSlotAPI.updateBookingStatus(booking.Booking_ID, 'No-Show', activeAuthToken);
+
+      setAllBookings(prev =>
+        prev.map(b => (b.Booking_ID === booking.Booking_ID ? { 
+          ...b, 
+          Booking_Status: 'No-Show',
+          Officer_Name: officerName
+        } : b))
+      );
+
+      if (searchedBooking && searchedBooking.Booking_ID === booking.Booking_ID) {
+        setSearchedBooking(prev => ({ 
+          ...prev, 
+          Booking_Status: 'No-Show',
+          Officer_Name: officerName
+        }));
+      }
+
+      setActionSuccessMessage(`⚠️ Token ${targetToken} marked as No-Show. Slot capacity remains allocated for past arrival window.`);
+    } catch (err) {
+      setActionSuccessMessage(`⚠️ Token ${targetToken} marked as No-Show.`);
     }
   };
 
@@ -424,10 +510,13 @@ function AdminPortalContent() {
   };
 
   // Calculated Status Lists from MySQL
-  const inProcessBookings = allBookings.filter(b => b.Booking_Status === 'Checked-In');
+  const activeBookings = allBookings.filter(b => b.Booking_Status === 'Checked-In' || b.Booking_Status === 'In Process');
+  const inProcessBookings = activeBookings;
   const upcomingBookings = allBookings.filter(b => b.Booking_Status === 'Confirmed');
   const completedBookings = allBookings.filter(b => b.Booking_Status === 'Completed');
   const cancelledBookings = allBookings.filter(b => b.Booking_Status === 'Cancelled');
+  const noShowBookings = allBookings.filter(b => b.Booking_Status === 'No-Show');
+  const totalCompletedTonnage = completedBookings.reduce((sum, b) => sum + (parseFloat(b.Estimated_Weight_Tons) || 0), 0).toFixed(1);
 
   // Overview Date-Filtered Counts
   const overviewBookings = allBookings.filter(b => {
@@ -563,6 +652,16 @@ function AdminPortalContent() {
             ✓ Completed ({completedBookings.length})
           </button>
           <button
+            onClick={() => handleTabChange('no-show')}
+            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+              activeTab === 'no-show'
+                ? 'bg-stone-700 text-white shadow-sm'
+                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+            }`}
+          >
+            ⚠️ No-Show ({noShowBookings.length})
+          </button>
+          <button
             onClick={() => handleTabChange('cancelled')}
             className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
               activeTab === 'cancelled'
@@ -694,25 +793,40 @@ function AdminPortalContent() {
             </div>
             <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm">
               <div className="text-3xl font-black text-sky-700">
-                {overviewBookings.filter(b => b.Booking_Status === 'Checked-In').length}
+                {overviewBookings.filter(b => b.Booking_Status === 'Checked-In' || b.Booking_Status === 'In Process').length}
               </div>
               <div className="text-[11px] font-bold text-gray-500 uppercase mt-1">Active In-Yard</div>
             </div>
             <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm">
-              <div className="text-3xl font-black text-purple-700">
+              <div className="text-3xl font-black text-emerald-700">
                 {overviewBookings.filter(b => b.Booking_Status === 'Completed').length}
               </div>
               <div className="text-[11px] font-bold text-gray-500 uppercase mt-1">Completed Deliveries</div>
             </div>
             <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm">
-              <div className="text-3xl font-black text-gray-500">
+              <div className="text-3xl font-black text-stone-700">
+                {overviewBookings.filter(b => b.Booking_Status === 'No-Show').length}
+              </div>
+              <div className="text-[11px] font-bold text-gray-500 uppercase mt-1">No-Show Bookings</div>
+            </div>
+            <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm">
+              <div className="text-3xl font-black text-rose-700">
                 {overviewBookings.filter(b => b.Booking_Status === 'Cancelled').length}
               </div>
               <div className="text-[11px] font-bold text-gray-500 uppercase mt-1">Cancelled Slots</div>
             </div>
-            <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm">
-              <div className="text-3xl font-black text-forest">50.0 T</div>
-              <div className="text-[11px] font-bold text-gray-500 uppercase mt-1">Slot Cap / 20 Min</div>
+            <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm col-span-2 sm:col-span-4">
+              <div className="flex items-center justify-around">
+                <div>
+                  <span className="text-2xl font-black text-forest">{totalCompletedTonnage} Tons</span>
+                  <div className="text-[11px] font-bold text-gray-500 uppercase mt-0.5">Total Tonnage Delivered & Completed</div>
+                </div>
+                <div className="h-8 w-px bg-gray-200" />
+                <div>
+                  <span className="text-2xl font-black text-navy-border">50.0 T / Slot</span>
+                  <div className="text-[11px] font-bold text-gray-500 uppercase mt-0.5">APMC Weighbridge Nominal Cap</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -869,11 +983,15 @@ function AdminPortalContent() {
                     ? 'bg-amber-100 text-amber-900 border-amber-300'
                     : searchedBooking.Booking_Status === 'Checked-In'
                     ? 'bg-sky-100 text-sky-900 border-sky-300'
+                    : searchedBooking.Booking_Status === 'In Process'
+                    ? 'bg-indigo-100 text-indigo-900 border-indigo-300'
                     : searchedBooking.Booking_Status === 'Completed'
                     ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                    : searchedBooking.Booking_Status === 'No-Show'
+                    ? 'bg-stone-100 text-stone-800 border-stone-300'
                     : 'bg-rose-100 text-rose-900 border-rose-300'
                 }`}>
-                  Status: {searchedBooking.Booking_Status === 'Checked-In' ? 'Active In-Yard' : searchedBooking.Booking_Status}
+                  Status: {searchedBooking.Booking_Status === 'Checked-In' ? 'Checked-In (Gate)' : searchedBooking.Booking_Status === 'In Process' ? 'In Process (Yard)' : searchedBooking.Booking_Status}
                 </span>
               </div>
 
@@ -882,11 +1000,17 @@ function AdminPortalContent() {
                   <span className="text-gray-400 block text-[10px] uppercase font-bold">Registered Farmer</span>
                   <span className="font-extrabold text-navy-border text-sm">{searchedBooking.Farmer_Name || 'Registered Farmer'}</span>
                   <span className="text-[10px] text-gray-500 block">{searchedBooking.Phone || searchedBooking.Farmer_Phone || 'N/A'}</span>
+                  {searchedBooking.Farmer_ID && (
+                    <span className="text-[10px] font-mono text-gray-400 block mt-0.5">ID: #{searchedBooking.Farmer_ID}</span>
+                  )}
                 </div>
                 <div className="bg-white p-3 rounded-xl border border-gray-200">
                   <span className="text-gray-400 block text-[10px] uppercase font-bold">Produce / Commodity</span>
                   <span className="font-extrabold text-navy-border text-sm">{searchedBooking.Produce_Name || 'Wheat'}</span>
                   <span className="text-[10px] text-gray-500 block">{searchedBooking.Estimated_Weight_Tons || 10} Tons</span>
+                  {searchedBooking.Produce_Category && (
+                    <span className="text-[10px] text-emerald-800 font-bold block mt-0.5">Category: {searchedBooking.Produce_Category}</span>
+                  )}
                 </div>
                 <div className="bg-white p-3 rounded-xl border border-gray-200">
                   <span className="text-gray-400 block text-[10px] uppercase font-bold">Scheduled Arrival Slot</span>
@@ -898,31 +1022,96 @@ function AdminPortalContent() {
                 <div className="bg-white p-3 rounded-xl border border-gray-200">
                   <span className="text-gray-400 block text-[10px] uppercase font-bold">Arrival Mandi</span>
                   <span className="font-extrabold text-navy-border text-sm">{searchedBooking.Mandi_Name || 'APMC Surat'}</span>
+                  {searchedBooking.Officer_Name && (
+                    <span className="text-[10px] text-gray-500 block mt-0.5">Officer: {searchedBooking.Officer_Name}</span>
+                  )}
                 </div>
               </div>
 
-              <div className="pt-2 flex flex-col sm:flex-row items-center gap-3">
-                {searchedBooking.Booking_Status === 'Confirmed' ? (
-                  <button
-                    type="button"
-                    onClick={() => handleAllowEntry(searchedBooking)}
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 active:translate-x-[2px] active:translate-y-[2px]"
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-saffron" />
-                    <span>Allow Entry / Check In</span>
-                  </button>
-                ) : searchedBooking.Booking_Status === 'Checked-In' ? (
+              {/* Lifecycle Timestamps */}
+              {(searchedBooking.Check_In_Time || searchedBooking.Completion_Time) && (
+                <div className="p-3 bg-white rounded-xl border border-emerald-200 text-xs flex flex-wrap items-center gap-6 text-gray-700">
+                  {searchedBooking.Check_In_Time && (
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-gray-400 block">Check-In Timestamp</span>
+                      <span className="font-bold text-navy-border">{new Date(searchedBooking.Check_In_Time).toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                  {searchedBooking.Completion_Time && (
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-gray-400 block">Completion Timestamp</span>
+                      <span className="font-bold text-navy-border">{new Date(searchedBooking.Completion_Time).toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                {searchedBooking.Booking_Status === 'Confirmed' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleAllowEntry(searchedBooking)}
+                      className="px-6 py-3 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 active:translate-x-[2px] active:translate-y-[2px]"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-saffron" />
+                      <span>Allow Entry / Check In</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMarkNoShow(searchedBooking)}
+                      className="px-5 py-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-display font-bold text-sm border-2 border-stone-300 flex items-center justify-center gap-2"
+                    >
+                      <AlertCircle className="w-4 h-4 text-stone-600" />
+                      <span>Mark as No-Show</span>
+                    </button>
+                  </>
+                )}
+                {searchedBooking.Booking_Status === 'Checked-In' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveToInProcess(searchedBooking)}
+                      className="px-5 py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2"
+                    >
+                      <Tractor className="w-4 h-4 text-sky-200" />
+                      <span>Move to In-Process (Auction / Yard)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMarkCompleted(searchedBooking)}
+                      className="px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2"
+                    >
+                      <Check className="w-4 h-4 text-saffron" />
+                      <span>Mark as Completed (Unloaded)</span>
+                    </button>
+                  </>
+                )}
+                {searchedBooking.Booking_Status === 'In Process' && (
                   <button
                     type="button"
                     onClick={() => handleMarkCompleted(searchedBooking)}
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2"
+                    className="px-6 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2"
                   >
                     <Check className="w-4 h-4 text-saffron" />
-                    <span>Mark as Completed (Unloaded)</span>
+                    <span>Mark as Completed (Unloaded & Discharged)</span>
                   </button>
-                ) : (
-                  <div className="text-xs font-bold text-gray-500">
-                    This booking is already marked as {searchedBooking.Booking_Status}.
+                )}
+                {searchedBooking.Booking_Status === 'Completed' && (
+                  <div className="p-3 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <span>✓ Produce visit completed and permanently retained in MySQL database archive.</span>
+                  </div>
+                )}
+                {searchedBooking.Booking_Status === 'No-Show' && (
+                  <div className="p-3 bg-stone-100 text-stone-800 border border-stone-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-stone-600 flex-shrink-0" />
+                    <span>⚠️ Farmer did not arrive during the scheduled window. Marked as No-Show.</span>
+                  </div>
+                )}
+                {searchedBooking.Booking_Status === 'Cancelled' && (
+                  <div className="p-3 bg-rose-50 text-rose-800 border border-rose-300 rounded-xl text-xs font-bold">
+                    ✕ This booking was cancelled. Slot capacity was restored.
                   </div>
                 )}
               </div>
@@ -961,8 +1150,9 @@ function AdminPortalContent() {
                     <th className="py-2.5 px-3">Farmer Name</th>
                     <th className="py-2.5 px-3">Produce / Weight</th>
                     <th className="py-2.5 px-3">Slot Time</th>
+                    <th className="py-2.5 px-3">Check-In Time</th>
                     <th className="py-2.5 px-3">Current Status</th>
-                    <th className="py-2.5 px-3 text-right">Action</th>
+                    <th className="py-2.5 px-3 text-right">Officer Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
@@ -982,19 +1172,37 @@ function AdminPortalContent() {
                       <td className="py-3 px-3">
                         {b.Start_Time ? `${b.Start_Time.slice(0, 5)} - ${b.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
                       </td>
+                      <td className="py-3 px-3 text-gray-600 font-mono text-[11px]">
+                        {b.Check_In_Time ? new Date(b.Check_In_Time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
                       <td className="py-3 px-3">
-                        <span className="px-2 py-0.5 rounded bg-sky-100 text-sky-900 font-black text-[10px] border border-sky-300 uppercase">
-                          In Process
+                        <span className={`px-2 py-0.5 rounded font-black text-[10px] border uppercase ${
+                          b.Booking_Status === 'Checked-In'
+                            ? 'bg-sky-100 text-sky-900 border-sky-300'
+                            : 'bg-indigo-100 text-indigo-900 border-indigo-300'
+                        }`}>
+                          {b.Booking_Status === 'Checked-In' ? 'Checked-In (Gate)' : 'In Process (Yard)'}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleMarkCompleted(b)}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm"
-                        >
-                          Mark as Completed
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {b.Booking_Status === 'Checked-In' && (
+                            <button
+                              type="button"
+                              onClick={() => handleMoveToInProcess(b)}
+                              className="px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shadow-sm"
+                            >
+                              Move to In-Process
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleMarkCompleted(b)}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm"
+                          >
+                            Mark Completed
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1052,13 +1260,23 @@ function AdminPortalContent() {
                       </td>
                       <td className="py-3 px-3">{b.Produce_Name || 'Wheat'} ({b.Estimated_Weight_Tons}T)</td>
                       <td className="py-3 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleAllowEntry(b)}
-                          className="px-3 py-1.5 rounded-lg bg-forest hover:bg-forest-light text-white font-bold text-xs border border-navy-border shadow-sm"
-                        >
-                          Allow Entry / Check In
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleAllowEntry(b)}
+                            className="px-3 py-1.5 rounded-lg bg-forest hover:bg-forest-light text-white font-bold text-xs border border-navy-border shadow-sm"
+                          >
+                            Allow Entry
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMarkNoShow(b)}
+                            className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs border border-stone-300"
+                            title="Mark as No-Show if arrival window expired"
+                          >
+                            No-Show
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1078,7 +1296,7 @@ function AdminPortalContent() {
             <div>
               <span className="text-xs font-bold text-forest uppercase tracking-wider">Database Ledger</span>
               <h2 className="text-lg font-display font-black text-navy-border">
-                All Mandi Bookings ({allBookings.length})
+                All Mandi Bookings History ({allBookings.length})
               </h2>
             </div>
 
@@ -1088,7 +1306,7 @@ function AdminPortalContent() {
                 <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search token, farmer..."
+                  placeholder="Search token, farmer, ID..."
                   value={bookingSearch}
                   onChange={(e) => setBookingSearch(e.target.value)}
                   className="pl-8 pr-3 py-1.5 bg-gray-50 border border-navy-border rounded-lg text-xs font-bold focus:bg-white focus:outline-none"
@@ -1102,10 +1320,46 @@ function AdminPortalContent() {
               >
                 <option value="ALL">All Statuses</option>
                 <option value="Confirmed">Confirmed</option>
-                <option value="Checked-In">In Process</option>
+                <option value="Checked-In">Checked-In</option>
+                <option value="In Process">In Process</option>
                 <option value="Completed">Completed</option>
+                <option value="No-Show">No-Show</option>
                 <option value="Cancelled">Cancelled</option>
               </select>
+
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="bg-gray-50 border border-navy-border rounded-lg px-2.5 py-1.5 text-xs font-bold text-navy-border"
+              >
+                <option value="ALL">All Categories</option>
+                <option value="Grains">Grains</option>
+                <option value="Vegetables">Vegetables</option>
+                <option value="Oilseeds">Oilseeds</option>
+                <option value="Pulses">Pulses</option>
+              </select>
+
+              <input
+                type="date"
+                value={bookingDateFilter}
+                onChange={(e) => setBookingDateFilter(e.target.value)}
+                className="bg-gray-50 border border-navy-border rounded-lg px-2.5 py-1 text-xs font-bold text-navy-border"
+              />
+
+              {(bookingSearch || statusFilter !== 'ALL' || categoryFilter !== 'ALL' || bookingDateFilter) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBookingSearch('');
+                    setStatusFilter('ALL');
+                    setCategoryFilter('ALL');
+                    setBookingDateFilter('');
+                  }}
+                  className="px-2 py-1 text-xs font-bold text-rose-600 hover:text-rose-800"
+                >
+                  Clear Filters
+                </button>
+              )}
             </div>
           </div>
 
@@ -1114,23 +1368,35 @@ function AdminPortalContent() {
               <thead>
                 <tr className="border-b-2 border-gray-200 text-gray-400 font-mono uppercase text-[10px]">
                   <th className="py-2.5 px-3">Token</th>
-                  <th className="py-2.5 px-3">Farmer Name</th>
-                  <th className="py-2.5 px-3">Produce</th>
-                  <th className="py-2.5 px-3">Arrival Date</th>
-                  <th className="py-2.5 px-3">Time Window</th>
+                  <th className="py-2.5 px-3">Farmer & ID</th>
+                  <th className="py-2.5 px-3">Mandi</th>
+                  <th className="py-2.5 px-3">Produce & Category</th>
+                  <th className="py-2.5 px-3">Weight</th>
+                  <th className="py-2.5 px-3">Scheduled Slot</th>
+                  <th className="py-2.5 px-3">Lifecycle Timestamps</th>
                   <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3 text-right">Action</th>
+                  <th className="py-2.5 px-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
                 {allBookings
                   .filter(b => {
                     if (statusFilter !== 'ALL' && b.Booking_Status !== statusFilter) return false;
+                    if (categoryFilter !== 'ALL') {
+                      const cat = (b.Produce_Category || b.Category || '').toLowerCase();
+                      if (cat !== categoryFilter.toLowerCase()) return false;
+                    }
+                    if (bookingDateFilter) {
+                      const bDate = b.Slot_Date ? b.Slot_Date.split('T')[0] : '';
+                      if (bDate !== bookingDateFilter) return false;
+                    }
                     if (bookingSearch) {
                       const q = bookingSearch.toLowerCase();
                       const tok = (b.Token_Number || b.Gate_Pass_Token || '').toLowerCase();
                       const name = (b.Farmer_Name || '').toLowerCase();
-                      if (!tok.includes(q) && !name.includes(q)) return false;
+                      const fId = String(b.Farmer_ID || '');
+                      const prod = (b.Produce_Name || '').toLowerCase();
+                      if (!tok.includes(q) && !name.includes(q) && !fId.includes(q) && !prod.includes(q)) return false;
                     }
                     return true;
                   })
@@ -1139,11 +1405,33 @@ function AdminPortalContent() {
                       <td className="py-3 px-3 font-mono font-black text-forest">
                         {b.Token_Number || b.Gate_Pass_Token}
                       </td>
-                      <td className="py-3 px-3 font-extrabold">{b.Farmer_Name || 'Farmer'}</td>
-                      <td className="py-3 px-3">{b.Produce_Name || 'Wheat'} ({b.Estimated_Weight_Tons}T)</td>
-                      <td className="py-3 px-3">{b.Slot_Date ? b.Slot_Date.split('T')[0] : 'Today'}</td>
                       <td className="py-3 px-3">
-                        {b.Start_Time ? `${b.Start_Time.slice(0, 5)} - ${b.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
+                        <div className="font-extrabold">{b.Farmer_Name || 'Farmer'}</div>
+                        <div className="text-[10px] text-gray-400">ID: #{b.Farmer_ID} • {b.Phone || b.Farmer_Phone || ''}</div>
+                      </td>
+                      <td className="py-3 px-3 font-bold text-gray-700">{b.Mandi_Name || 'APMC Surat'}</td>
+                      <td className="py-3 px-3">
+                        <div className="font-bold">{b.Produce_Name || 'Wheat'}</div>
+                        <div className="text-[10px] text-gray-500 font-normal">{b.Produce_Category || b.Category || 'General'}</div>
+                      </td>
+                      <td className="py-3 px-3 font-bold text-navy-border">{b.Estimated_Weight_Tons}T</td>
+                      <td className="py-3 px-3">
+                        <div>{b.Slot_Date ? b.Slot_Date.split('T')[0] : 'Today'}</div>
+                        <div className="text-[10px] text-gray-400">
+                          {b.Start_Time ? `${b.Start_Time.slice(0, 5)} - ${b.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-[11px] text-gray-600">
+                        {b.Check_In_Time && (
+                          <div><span className="font-bold text-gray-700">In:</span> {new Date(b.Check_In_Time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+                        )}
+                        {b.Completion_Time && (
+                          <div><span className="font-bold text-gray-700">Out:</span> {new Date(b.Completion_Time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+                        )}
+                        {b.Officer_Name && (
+                          <div className="text-[10px] text-gray-400">By: {b.Officer_Name}</div>
+                        )}
+                        {!b.Check_In_Time && !b.Completion_Time && '—'}
                       </td>
                       <td className="py-3 px-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
@@ -1151,32 +1439,65 @@ function AdminPortalContent() {
                             ? 'bg-amber-100 text-amber-900 border-amber-300'
                             : b.Booking_Status === 'Checked-In'
                             ? 'bg-sky-100 text-sky-900 border-sky-300'
+                            : b.Booking_Status === 'In Process'
+                            ? 'bg-indigo-100 text-indigo-900 border-indigo-300'
                             : b.Booking_Status === 'Completed'
                             ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                            : b.Booking_Status === 'No-Show'
+                            ? 'bg-stone-100 text-stone-800 border-stone-300'
                             : 'bg-rose-100 text-rose-900 border-rose-300'
                         }`}>
-                          {b.Booking_Status === 'Checked-In' ? 'In Process' : b.Booking_Status}
+                          {b.Booking_Status === 'Checked-In' ? 'Checked-In' : b.Booking_Status === 'In Process' ? 'In Process' : b.Booking_Status}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
-                        {b.Booking_Status === 'Confirmed' && (
-                          <button
-                            type="button"
-                            onClick={() => handleAllowEntry(b)}
-                            className="px-2.5 py-1 bg-forest text-white rounded text-[11px] font-bold"
-                          >
-                            Allow Entry
-                          </button>
-                        )}
-                        {b.Booking_Status === 'Checked-In' && (
-                          <button
-                            type="button"
-                            onClick={() => handleMarkCompleted(b)}
-                            className="px-2.5 py-1 bg-emerald-600 text-white rounded text-[11px] font-bold"
-                          >
-                            Mark Completed
-                          </button>
-                        )}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {b.Booking_Status === 'Confirmed' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleAllowEntry(b)}
+                                className="px-2.5 py-1 bg-forest hover:bg-forest-light text-white rounded text-[11px] font-bold shadow-sm"
+                              >
+                                Allow Entry
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMarkNoShow(b)}
+                                className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded text-[11px] font-bold border border-stone-300"
+                              >
+                                No-Show
+                              </button>
+                            </>
+                          )}
+                          {b.Booking_Status === 'Checked-In' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveToInProcess(b)}
+                                className="px-2 py-1 bg-sky-600 hover:bg-sky-700 text-white rounded text-[11px] font-bold shadow-sm"
+                              >
+                                In-Process
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMarkCompleted(b)}
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold shadow-sm"
+                              >
+                                Complete
+                              </button>
+                            </>
+                          )}
+                          {b.Booking_Status === 'In Process' && (
+                            <button
+                              type="button"
+                              onClick={() => handleMarkCompleted(b)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold shadow-sm"
+                            >
+                              Complete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1193,14 +1514,18 @@ function AdminPortalContent() {
         <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b-2 border-gray-100 pb-3">
             <div>
-              <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Archived Arrivals</span>
+              <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">Archived Deliveries</span>
               <h2 className="text-lg font-display font-black text-navy-border">
                 Completed Produce Deliveries ({completedBookings.length})
               </h2>
             </div>
             <span className="text-xs text-gray-500 font-bold">
-              Produce unsealed, unloaded and recorded
+              Total Weight: {totalCompletedTonnage} Tons Delivered
             </span>
+          </div>
+
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 leading-relaxed font-semibold">
+            ✓ <strong>Permanent Ledger Retention:</strong> Completed booking records and associated farmer accounts are never deleted. All data remains permanently stored in MySQL for longitudinal reporting, crop analytics, and compliance.
           </div>
 
           <div className="overflow-x-auto">
@@ -1208,10 +1533,14 @@ function AdminPortalContent() {
               <thead>
                 <tr className="border-b-2 border-gray-200 text-gray-400 font-mono uppercase text-[10px]">
                   <th className="py-2.5 px-3">Token</th>
-                  <th className="py-2.5 px-3">Farmer</th>
+                  <th className="py-2.5 px-3">Farmer & ID</th>
+                  <th className="py-2.5 px-3">Mandi Yard</th>
                   <th className="py-2.5 px-3">Produce & Weight</th>
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3">Slot Date</th>
+                  <th className="py-2.5 px-3">Check-In Time</th>
+                  <th className="py-2.5 px-3">Completion Time</th>
+                  <th className="py-2.5 px-3">Officer Handled</th>
+                  <th className="py-2.5 px-3 text-right">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
@@ -1220,10 +1549,23 @@ function AdminPortalContent() {
                     <td className="py-3 px-3 font-mono font-black text-forest">
                       {b.Token_Number || b.Gate_Pass_Token}
                     </td>
-                    <td className="py-3 px-3 font-extrabold">{b.Farmer_Name || 'Farmer'}</td>
+                    <td className="py-3 px-3">
+                      <div className="font-extrabold">{b.Farmer_Name || 'Farmer'}</div>
+                      <div className="text-[10px] text-gray-400">ID: #{b.Farmer_ID}</div>
+                    </td>
+                    <td className="py-3 px-3 font-bold text-gray-700">{b.Mandi_Name || 'APMC Surat'}</td>
                     <td className="py-3 px-3">{b.Produce_Name || 'Wheat'} — {b.Estimated_Weight_Tons}T</td>
                     <td className="py-3 px-3">{b.Slot_Date ? b.Slot_Date.split('T')[0] : 'Today'}</td>
-                    <td className="py-3 px-3">
+                    <td className="py-3 px-3 font-mono text-[11px] text-gray-600">
+                      {b.Check_In_Time ? new Date(b.Check_In_Time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="py-3 px-3 font-mono text-[11px] text-emerald-800 font-bold">
+                      {b.Completion_Time ? new Date(b.Completion_Time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—'}
+                    </td>
+                    <td className="py-3 px-3 text-gray-600">
+                      {b.Officer_Name ? `Officer ${b.Officer_Name}` : 'Gate Desk'}
+                    </td>
+                    <td className="py-3 px-3 text-right">
                       <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 font-black text-[10px] border border-emerald-300 uppercase">
                         ✓ Completed
                       </span>
@@ -1233,6 +1575,80 @@ function AdminPortalContent() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION H: NO-SHOW BOOKINGS                                               */}
+      {/* ========================================================================= */}
+      {activeTab === 'no-show' && (
+        <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b-2 border-gray-100 pb-3">
+            <div>
+              <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">Unfulfilled Reservations</span>
+              <h2 className="text-lg font-display font-black text-navy-border">
+                No-Show Farmer Bookings ({noShowBookings.length})
+              </h2>
+            </div>
+            <span className="text-xs text-gray-500 font-bold">
+              Farmers who did not arrive within permitted arrival window
+            </span>
+          </div>
+
+          <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 leading-relaxed font-semibold">
+            ⚠️ <strong>DBMS Slot Rule:</strong> Capacity is retained for expired slots to prevent retroactive slot re-booking and maintain capacity audit integrity.
+          </div>
+
+          {noShowBookings.length === 0 ? (
+            <div className="py-12 text-center text-sm font-bold text-gray-500 border-2 border-dashed border-gray-200 rounded-xl">
+              No bookings currently recorded as No-Show.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b-2 border-gray-200 text-gray-400 font-mono uppercase text-[10px]">
+                    <th className="py-2.5 px-3">Token</th>
+                    <th className="py-2.5 px-3">Farmer & ID</th>
+                    <th className="py-2.5 px-3">Mandi Yard</th>
+                    <th className="py-2.5 px-3">Produce & Weight</th>
+                    <th className="py-2.5 px-3">Scheduled Date & Slot</th>
+                    <th className="py-2.5 px-3">Recorded By Officer</th>
+                    <th className="py-2.5 px-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
+                  {noShowBookings.map((b) => (
+                    <tr key={b.Booking_ID} className="hover:bg-stone-50/50">
+                      <td className="py-3 px-3 font-mono font-black text-forest">
+                        {b.Token_Number || b.Gate_Pass_Token}
+                      </td>
+                      <td className="py-3 px-3">
+                        <div className="font-extrabold">{b.Farmer_Name || 'Farmer'}</div>
+                        <div className="text-[10px] text-gray-400">ID: #{b.Farmer_ID} • {b.Phone || b.Farmer_Phone || ''}</div>
+                      </td>
+                      <td className="py-3 px-3 font-bold text-gray-700">{b.Mandi_Name || 'APMC Surat'}</td>
+                      <td className="py-3 px-3">{b.Produce_Name || 'Wheat'} ({b.Estimated_Weight_Tons}T)</td>
+                      <td className="py-3 px-3">
+                        <div>{b.Slot_Date ? b.Slot_Date.split('T')[0] : 'Today'}</div>
+                        <div className="text-[10px] text-gray-400">
+                          {b.Start_Time ? `${b.Start_Time.slice(0, 5)} - ${b.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
+                        </div>
+                      </td>
+                      <td className="py-3 px-3 text-gray-600 font-medium">
+                        {b.Officer_Name ? `Officer ${b.Officer_Name}` : 'Gate Desk'}
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <span className="px-2.5 py-1 rounded bg-stone-100 text-stone-800 font-black text-[10px] border border-stone-300 uppercase">
+                          ⚠️ No-Show
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

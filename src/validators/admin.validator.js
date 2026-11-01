@@ -6,8 +6,8 @@ const loginSchema = z.object({
 });
 
 const updateBookingStatusSchema = z.object({
-  Booking_Status: z.enum(['Confirmed', 'Checked-In', 'Completed', 'Cancelled'], {
-    errorMap: () => ({ message: "Booking status must be one of: Confirmed, Checked-In, Completed, Cancelled" })
+  Booking_Status: z.enum(['Confirmed', 'Checked-In', 'In Process', 'Completed', 'Cancelled', 'No-Show'], {
+    errorMap: () => ({ message: "Booking status must be one of: Confirmed, Checked-In, In Process, Completed, Cancelled, No-Show" })
   })
 });
 

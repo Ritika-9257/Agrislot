@@ -97,8 +97,26 @@ function FarmerPortalContent() {
   // My Bookings Tab State
   const [myBookings, setMyBookings] = useState([]);
   const [searchFilter, setSearchFilter] = useState('');
+  const [historyCategory, setHistoryCategory] = useState('ALL'); // 'ALL' | 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cancelModal, setCancelModal] = useState({ open: false, booking: null });
+
+  const formatDateTime = (ts) => {
+    if (!ts) return null;
+    try {
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? String(ts) : d.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return String(ts);
+    }
+  };
 
   // Initial Load of Mandis and Produce
   useEffect(() => {
@@ -165,7 +183,14 @@ function FarmerPortalContent() {
     }
     setLoadingHistory(true);
     try {
-      const res = await AgriSlotAPI.getAdminBookings(token || '', { limit: 50 }).catch(() => null);
+      if (user?.farmerId) {
+        const res = await AgriSlotAPI.getFarmerBookings(user.farmerId, token).catch(() => null);
+        if (res?.data && Array.isArray(res.data)) {
+          setMyBookings(res.data);
+          return;
+        }
+      }
+      const res = await AgriSlotAPI.getAdminBookings(token || '', { limit: 100 }).catch(() => null);
       if (res?.data && Array.isArray(res.data)) {
         if (user?.farmerId) {
           const userBookings = res.data.filter(b => b.Farmer_ID === user.farmerId);
@@ -759,126 +784,254 @@ function FarmerPortalContent() {
       {/* ========================================================================= */}
       {/* TAB 2: MY BOOKINGS & DIGITAL PASSES                                       */}
       {/* ========================================================================= */}
-      {activeTab === 'history' && (
-        <div className="space-y-6">
-          
-          <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-display font-black text-navy-border">
-                  My Bookings & Gate Pass Tokens
-                </h2>
-                <p className="text-xs text-gray-600 mt-1">
-                  Present your unique Token Code upon arrival at the Mandi Gate for clearance.
-                </p>
+      {activeTab === 'history' && (() => {
+        const upcomingCount = myBookings.filter(b => b.Booking_Status === 'Confirmed').length;
+        const activeCount = myBookings.filter(b => b.Booking_Status === 'Checked-In' || b.Booking_Status === 'In Process').length;
+        const completedCount = myBookings.filter(b => b.Booking_Status === 'Completed').length;
+        const cancelledCount = myBookings.filter(b => b.Booking_Status === 'Cancelled' || b.Booking_Status === 'No-Show').length;
+
+        const displayedHistoryBookings = myBookings.filter(b => {
+          const status = b.Booking_Status || 'Confirmed';
+          if (historyCategory === 'UPCOMING' && status !== 'Confirmed') return false;
+          if (historyCategory === 'ACTIVE' && status !== 'Checked-In' && status !== 'In Process') return false;
+          if (historyCategory === 'COMPLETED' && status !== 'Completed') return false;
+          if (historyCategory === 'CANCELLED' && status !== 'Cancelled' && status !== 'No-Show') return false;
+
+          if (searchFilter) {
+            const q = searchFilter.toLowerCase();
+            const tok = (b.Token_Number || b.Gate_Pass_Token || '').toLowerCase();
+            const date = (b.Slot_Date || '').toLowerCase();
+            const prod = (b.Produce_Name || '').toLowerCase();
+            const mandi = (b.Mandi_Name || '').toLowerCase();
+            return tok.includes(q) || date.includes(q) || prod.includes(q) || mandi.includes(q);
+          }
+          return true;
+        });
+
+        return (
+          <div className="space-y-6">
+            
+            <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-display font-black text-navy-border">
+                    My Booking History & Gate Passes
+                  </h2>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Your complete mandi arrival history. Completed visits are permanently archived in the MySQL database.
+                  </p>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search token, date, produce..."
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-gray-50 border-2 border-navy-border rounded-xl text-xs font-bold focus:bg-white focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Filter by token, date..."
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border-2 border-navy-border rounded-xl text-xs font-bold focus:bg-white focus:outline-none"
-                />
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'ALL'
+                      ? 'bg-forest text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  All ({myBookings.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('UPCOMING')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'UPCOMING'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  }`}
+                >
+                  ⏳ Upcoming ({upcomingCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('ACTIVE')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'ACTIVE'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'bg-sky-50 text-sky-800 hover:bg-sky-100'
+                  }`}
+                >
+                  🚜 Active / In-Process ({activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('COMPLETED')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'COMPLETED'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
+                >
+                  ✓ Completed ({completedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('CANCELLED')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'CANCELLED'
+                      ? 'bg-rose-700 text-white shadow-sm'
+                      : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
+                  }`}
+                >
+                  ✕ Cancelled / No-Show ({cancelledCount})
+                </button>
               </div>
-            </div>
 
-            {loadingHistory ? (
-              <div className="py-12 text-center text-sm font-bold text-gray-500">
-                <RefreshCw className="w-5 h-5 animate-spin mx-auto text-forest mb-2" />
-                Loading your bookings...
-              </div>
-            ) : !user ? (
-              <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-3">
-                <Lock className="w-10 h-10 text-gray-400 mx-auto" />
-                <div className="text-sm font-bold text-gray-700">Please sign in to view your Gate Pass Tokens and booking history.</div>
-                <button
-                  type="button"
-                  onClick={openLogin}
-                  className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border shadow-sm hover:bg-forest-light transition-all"
-                >
-                  Sign In with Farmer Account
-                </button>
-              </div>
-            ) : myBookings.length === 0 ? (
-              <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-2">
-                <Tractor className="w-10 h-10 text-gray-400 mx-auto" />
-                <div className="text-sm font-bold text-gray-700">No bookings found yet.</div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('book')}
-                  className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border"
-                >
-                  Book Your First Arrival Slot
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {myBookings
-                  .filter(b => {
-                    if (!searchFilter) return true;
-                    const q = searchFilter.toLowerCase();
-                    const tok = (b.Token_Number || b.Gate_Pass_Token || '').toLowerCase();
-                    const date = (b.Slot_Date || '').toLowerCase();
-                    const prod = (b.Produce_Name || '').toLowerCase();
-                    return tok.includes(q) || date.includes(q) || prod.includes(q);
-                  })
-                  .map((booking, idx) => {
+              {loadingHistory ? (
+                <div className="py-12 text-center text-sm font-bold text-gray-500">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto text-forest mb-2" />
+                  Loading your bookings...
+                </div>
+              ) : !user ? (
+                <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-3">
+                  <Lock className="w-10 h-10 text-gray-400 mx-auto" />
+                  <div className="text-sm font-bold text-gray-700">Please sign in to view your Gate Pass Tokens and booking history.</div>
+                  <button
+                    type="button"
+                    onClick={openLogin}
+                    className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border shadow-sm hover:bg-forest-light transition-all"
+                  >
+                    Sign In with Farmer Account
+                  </button>
+                </div>
+              ) : displayedHistoryBookings.length === 0 ? (
+                <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-2">
+                  <Tractor className="w-10 h-10 text-gray-400 mx-auto" />
+                  <div className="text-sm font-bold text-gray-700">
+                    {searchFilter || historyCategory !== 'ALL'
+                      ? 'No bookings match your current filter.'
+                      : 'No bookings found yet.'}
+                  </div>
+                  {historyCategory === 'ALL' && !searchFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('book')}
+                      className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border"
+                    >
+                      Book Your First Arrival Slot
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {displayedHistoryBookings.map((booking, idx) => {
                     const token = booking.Token_Number || booking.Gate_Pass_Token || `AG-T${booking.Booking_ID}`;
                     const status = booking.Booking_Status || 'Confirmed';
 
                     return (
                       <div
                         key={booking.Booking_ID || idx}
-                        className="bg-white rounded-2xl border-2 border-navy-border p-5 shadow-sm space-y-3 relative hover:shadow-md transition-all"
+                        className="bg-white rounded-2xl border-2 border-navy-border p-5 shadow-sm space-y-3 relative hover:shadow-md transition-all flex flex-col justify-between"
                       >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                              Mandi Gate Token
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                                Mandi Gate Token
+                              </span>
+                              <div className="text-xl font-mono font-black text-forest">
+                                {token}
+                              </div>
+                            </div>
+
+                            <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${
+                              status === 'Confirmed'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : status === 'Checked-In'
+                                ? 'bg-sky-100 text-sky-900 border-sky-300'
+                                : status === 'In Process'
+                                ? 'bg-indigo-100 text-indigo-900 border-indigo-300'
+                                : status === 'Completed'
+                                ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                : status === 'No-Show'
+                                ? 'bg-stone-100 text-stone-800 border-stone-300'
+                                : 'bg-rose-100 text-rose-900 border-rose-300'
+                            }`}>
+                              {status === 'Checked-In' ? 'Checked-In (Gate)' : status === 'In Process' ? 'In Process (Yard)' : status === 'No-Show' ? '⚠️ No-Show' : status}
                             </span>
-                            <div className="text-xl font-mono font-black text-forest">
-                              {token}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-gray-100">
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Mandi Yard</span>
+                              <span className="font-bold text-navy-border">{booking.Mandi_Name || 'APMC Surat'}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Commodity</span>
+                              <span className="font-bold text-navy-border">
+                                {booking.Produce_Name || 'Wheat'}
+                                <span className="ml-1 text-[10px] text-gray-500 font-normal">
+                                  ({booking.Category || booking.Produce_Category || 'General'})
+                                </span>
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Arrival Date</span>
+                              <span className="font-bold text-navy-border">{booking.Slot_Date ? booking.Slot_Date.split('T')[0] : 'Today'}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Time Window</span>
+                              <span className="font-bold text-navy-border">
+                                {booking.Start_Time ? `${booking.Start_Time.slice(0, 5)} - ${booking.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Estimated Weight</span>
+                              <span className="font-bold text-navy-border">{booking.Estimated_Weight_Tons || 5} Tons</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Booking Reference</span>
+                              <span className="font-mono text-[11px] font-bold text-gray-600">#{booking.Booking_ID}</span>
                             </div>
                           </div>
 
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${
-                            status === 'Confirmed'
-                              ? 'bg-amber-100 text-amber-800 border-amber-300'
-                              : status === 'Checked-In'
-                              ? 'bg-blue-100 text-blue-800 border-blue-300'
-                              : status === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                              : 'bg-rose-100 text-rose-800 border-rose-300'
-                          }`}>
-                            {status === 'Checked-In' ? 'In Process (Yard)' : status}
-                          </span>
+                          {/* Lifecycle Timestamps & Handling Officer */}
+                          {(booking.Check_In_Time || booking.Completion_Time || booking.Officer_Name) && (
+                            <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200 text-[11px] space-y-1">
+                              {booking.Check_In_Time && (
+                                <div className="text-gray-600">
+                                  <span className="font-bold text-navy-border">Gate Check-In:</span> {formatDateTime(booking.Check_In_Time)}
+                                </div>
+                              )}
+                              {booking.Completion_Time && (
+                                <div className="text-gray-600">
+                                  <span className="font-bold text-navy-border">Unloading Completed:</span> {formatDateTime(booking.Completion_Time)}
+                                </div>
+                              )}
+                              {booking.Officer_Name && (
+                                <div className="text-gray-500 text-[10px]">
+                                  <span className="font-bold text-gray-700">Handled By:</span> Officer {booking.Officer_Name}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Completed Preservation Notice */}
+                          {status === 'Completed' && (
+                            <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200 text-[10px] font-bold text-emerald-800 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                              <span>Visit completed. Permanent historical record archived in MySQL.</span>
+                            </div>
+                          )}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-gray-100">
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Mandi Yard</span>
-                            <span className="font-bold text-navy-border">{booking.Mandi_Name || 'APMC Surat'}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Commodity</span>
-                            <span className="font-bold text-navy-border">{booking.Produce_Name || 'Wheat'}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Arrival Date</span>
-                            <span className="font-bold text-navy-border">{booking.Slot_Date ? booking.Slot_Date.split('T')[0] : 'Today'}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Time Window</span>
-                            <span className="font-bold text-navy-border">
-                              {booking.Start_Time ? `${booking.Start_Time.slice(0, 5)} - ${booking.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="pt-2 flex items-center justify-between border-t border-gray-100">
+                        <div className="pt-3 flex items-center justify-between border-t border-gray-100 mt-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -904,13 +1057,14 @@ function FarmerPortalContent() {
                       </div>
                     );
                   })}
-              </div>
-            )}
+                </div>
+              )}
+
+            </div>
 
           </div>
-
-        </div>
-      )}
+        );
+      })()}
 
       {/* GATE PASS MODAL */}
       {showGatePassModal && successBooking && (
