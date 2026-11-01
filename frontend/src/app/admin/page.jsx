@@ -29,6 +29,7 @@ import {
   FileText,
   BarChart3,
   CalendarDays,
+  CalendarCheck,
   QrCode
 } from 'lucide-react';
 import { AgriSlotAPI } from '@/lib/api';
@@ -64,6 +65,10 @@ function AdminPortalContent() {
   // Active Main Tab:
   // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'slots' | 'farmers' | 'analysis' | 'access'
   const [activeTab, setActiveTab] = useState(() => getTabFromParam(tabParam));
+
+  // Grouped Module Detection for Horizontal Sub-Navigation
+  const isGateModule = ['verify', 'active', 'confirmed'].includes(activeTab);
+  const isBookingModule = ['bookings', 'completed', 'cancelled'].includes(activeTab);
 
   // Sync activeTab whenever URL query changes (e.g. sidebar navigation or browser back/forward)
   useEffect(() => {
@@ -648,15 +653,25 @@ function AdminPortalContent() {
       <div className="bg-forest rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-saffron text-navy-border text-xs font-black uppercase tracking-wider mb-2 border border-navy-border">
-            <ShieldCheck className="w-3.5 h-3.5" /> {isOfficer ? 'Mandi Officer Desk — Gate Clearance Terminal' : 'APMC Administrator Control Center'}
+            <ShieldCheck className="w-3.5 h-3.5" /> {isOfficer ? 'Mandi Officer Terminal — APMC Gujarat Central' : 'APMC Administrator Control Center'}
           </div>
           <h1 className="text-2xl sm:text-3xl font-display font-black text-white">
-            {isOfficer ? 'Mandi Gate Clearance Terminal' : 'APMC System Administration'}
+            {activeTab === 'overview' && 'APMC System Overview & Statistics'}
+            {isGateModule && (isOfficer ? 'Mandi Gate Clearance Terminal' : 'Gate Clearance & Yard Operations')}
+            {isBookingModule && 'Booking Management & Lifecycle Archive'}
+            {activeTab === 'slots' && 'Slot Capacity & Hybrid Quota Manager'}
+            {activeTab === 'farmers' && 'Farmer Master Directory & Profiles'}
+            {activeTab === 'analysis' && 'DBMS Analytics, Views & Audit Reports'}
+            {activeTab === 'access' && 'User Access & Role-Based Permissions (RBAC)'}
           </h1>
           <p className="text-xs text-mint-foam mt-1">
-            {isOfficer
-              ? 'Token verification, gate clearance, active in-yard tracking, and weighbridge check-in.'
-              : 'Centralized slot management, RBAC privileges, audit logs, and DBMS query analytics.'}
+            {activeTab === 'overview' && 'Real-time operational metrics, gate flow velocity, slot utilization, and yard summaries.'}
+            {isGateModule && 'Gate clearance, QR token verification, weighbridge check-in, and vehicle departures.'}
+            {isBookingModule && 'Query and inspect all APMC producer bookings, historical receipts, and cancellation reasons.'}
+            {activeTab === 'slots' && 'Configure 5-farmer limits, 50-ton weight capacities, operational status, and reconcile counters.'}
+            {activeTab === 'farmers' && 'Search and inspect registered farmers, land holdings, Aadhaar credentials, and booking histories.'}
+            {activeTab === 'analysis' && 'Execute stored procedures, query relational views, trace triggers, and audit application events.'}
+            {activeTab === 'access' && 'Configure Admin, Mandi Officer, and Farmer privileges with self-demotion security safeguards.'}
           </p>
         </div>
 
@@ -675,175 +690,146 @@ function AdminPortalContent() {
         </div>
       </div>
 
-      {/* COMPREHENSIVE HORIZONTAL NAVIGATION BAR (Primary Admin Navigation) */}
-      <div className="bg-white border-2 border-navy-border rounded-2xl p-1.5 shadow-bento-sm overflow-x-auto scrollbar-thin">
-        <div className="flex items-center gap-1.5 min-w-max">
-          {!isOfficer && (
+      {/* MODULE HORIZONTAL NAVIGATION: GATE OPERATIONS */}
+      {isGateModule && (
+        <div className="bg-white border-2 border-navy-border rounded-2xl p-2 shadow-bento-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-gray-100 pb-2.5 mb-2 px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-mint-foam border border-navy-border/20 text-forest flex items-center justify-center font-bold text-sm">
+                <QrCode className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="font-display font-black text-sm text-navy-border">Gate Operations &amp; Yard Clearance</h2>
+                <p className="text-[11px] text-gray-500 font-medium">Verify booking tokens, grant gate entry, track active vehicles in yard, and inspect expected arrivals.</p>
+              </div>
+            </div>
+            <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-forest/10 text-forest border border-forest/20">
+              MODULE: GATE OPS
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
             <button
-              onClick={() => handleTabChange('overview')}
-              className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                activeTab === 'overview'
+              onClick={() => handleTabChange('verify')}
+              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'verify'
                   ? 'bg-forest text-white shadow-sm border border-forest'
                   : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
               }`}
             >
-              <span>📊</span>
-              <span>Overview</span>
+              <span>🔍</span>
+              <span>Verify Token &amp; Check-In</span>
             </button>
-          )}
-          <button
-            onClick={() => handleTabChange('verify')}
-            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'verify'
-                ? 'bg-forest text-white shadow-sm border border-forest'
-                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-            }`}
-          >
-            <span>🔍</span>
-            <span>Verify Token &amp; Check-In</span>
-          </button>
-          <button
-            onClick={() => handleTabChange('active')}
-            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'active'
-                ? 'bg-sky-600 text-white shadow-sm border border-sky-700'
-                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-            }`}
-          >
-            <span>🚜</span>
-            <span>Active In-Yard</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
-              activeTab === 'active' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {inProcessBookings.length}
-            </span>
-          </button>
-          <button
-            onClick={() => handleTabChange('confirmed')}
-            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'confirmed'
-                ? 'bg-amber-600 text-white shadow-sm border border-amber-700'
-                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-            }`}
-          >
-            <span>⏳</span>
-            <span>Confirmed / Expected</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
-              activeTab === 'confirmed' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {upcomingBookings.length}
-            </span>
-          </button>
-          <button
-            onClick={() => handleTabChange('bookings')}
-            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'bookings'
-                ? 'bg-forest text-white shadow-sm border border-forest'
-                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-            }`}
-          >
-            <span>📋</span>
-            <span>All Bookings</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
-              activeTab === 'bookings' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {allBookings.length}
-            </span>
-          </button>
-          <button
-            onClick={() => handleTabChange('completed')}
-            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'completed'
-                ? 'bg-emerald-700 text-white shadow-sm border border-emerald-800'
-                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-            }`}
-          >
-            <span>✓</span>
-            <span>Completed Deliveries</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
-              activeTab === 'completed' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {completedBookings.length}
-            </span>
-          </button>
-          <button
-            onClick={() => handleTabChange('cancelled')}
-            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              activeTab === 'cancelled'
-                ? 'bg-rose-700 text-white shadow-sm border border-rose-800'
-                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-            }`}
-          >
-            <span>✕</span>
-            <span>Cancelled Bookings</span>
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
-              activeTab === 'cancelled' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {cancelledBookings.length}
-            </span>
-          </button>
-          {!isOfficer && (
-            <>
-              <button
-                onClick={() => {
-                  handleTabChange('slots');
-                  loadSlots();
-                }}
-                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  activeTab === 'slots'
-                    ? 'bg-forest text-white shadow-sm border border-forest'
-                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-                }`}
-              >
-                <span>🗂️</span>
-                <span>Slot Capacity</span>
-              </button>
-              <button
-                onClick={() => {
-                  handleTabChange('farmers');
-                  loadFarmers();
-                }}
-                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  activeTab === 'farmers'
-                    ? 'bg-forest text-white shadow-sm border border-forest'
-                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-                }`}
-              >
-                <span>🌾</span>
-                <span>Farmer Master Directory</span>
-              </button>
-              <button
-                onClick={() => {
-                  handleTabChange('analysis');
-                  loadAnalysisData();
-                }}
-                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  activeTab === 'analysis'
-                    ? 'bg-forest text-white shadow-sm border border-forest'
-                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-                }`}
-              >
-                <span>📈</span>
-                <span>Database &amp; Reports</span>
-              </button>
-              <button
-                onClick={() => {
-                  handleTabChange('access');
-                  loadUsers();
-                }}
-                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  activeTab === 'access'
-                    ? 'bg-purple-700 text-white shadow-sm border border-purple-800'
-                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
-                }`}
-              >
-                <span>👥</span>
-                <span>Manage Roles (RBAC)</span>
-              </button>
-            </>
-          )}
+
+            <button
+              onClick={() => handleTabChange('active')}
+              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'active'
+                  ? 'bg-sky-600 text-white shadow-sm border border-sky-700'
+                  : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
+              }`}
+            >
+              <span>🚜</span>
+              <span>Active In-Yard</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                activeTab === 'active' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
+                {inProcessBookings.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange('confirmed')}
+              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'confirmed'
+                  ? 'bg-amber-600 text-white shadow-sm border border-amber-700'
+                  : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
+              }`}
+            >
+              <span>⏳</span>
+              <span>Expected Arrivals</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                activeTab === 'confirmed' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
+                {upcomingBookings.length}
+              </span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* MODULE HORIZONTAL NAVIGATION: BOOKING MANAGEMENT */}
+      {isBookingModule && (
+        <div className="bg-white border-2 border-navy-border rounded-2xl p-2 shadow-bento-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-gray-100 pb-2.5 mb-2 px-1">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-mint-foam border border-navy-border/20 text-forest flex items-center justify-center font-bold text-sm">
+                <CalendarCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="font-display font-black text-sm text-navy-border">Booking Management &amp; Audit Archive</h2>
+                <p className="text-[11px] text-gray-500 font-medium">Search, filter, inspect full reservation records, completed produce deliveries, and cancellation reasons.</p>
+              </div>
+            </div>
+            <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-forest/10 text-forest border border-forest/20">
+              MODULE: BOOKINGS
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
+            <button
+              onClick={() => handleTabChange('bookings')}
+              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'bookings'
+                  ? 'bg-forest text-white shadow-sm border border-forest'
+                  : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
+              }`}
+            >
+              <span>📋</span>
+              <span>All Bookings</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                activeTab === 'bookings' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
+                {allBookings.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange('completed')}
+              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'completed'
+                  ? 'bg-emerald-700 text-white shadow-sm border border-emerald-800'
+                  : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
+              }`}
+            >
+              <span>✓</span>
+              <span>Completed Deliveries</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                activeTab === 'completed' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
+                {completedBookings.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange('cancelled')}
+              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-2 ${
+                activeTab === 'cancelled'
+                  ? 'bg-rose-700 text-white shadow-sm border border-rose-800'
+                  : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
+              }`}
+            >
+              <span>✕</span>
+              <span>Cancelled Bookings</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                activeTab === 'cancelled' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
+                {cancelledBookings.length}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {actionSuccessMessage && (
         <div className="bg-emerald-50 border-2 border-emerald-500 rounded-xl p-4 text-emerald-900 text-sm font-semibold flex items-center justify-between shadow-sm">

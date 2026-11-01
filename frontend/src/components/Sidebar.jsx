@@ -45,48 +45,74 @@ function SidebarContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Distinct role-based navigation: Single Admin Dashboard entry for Admin & Officer; Farmer/Visitor portals preserved
+  // Modular Role-Based Navigation: Independent modules in left sidebar
   let navLinks = [];
   if (user?.role === 'Admin') {
     navLinks = [
-      { href: '/admin', label: 'Admin Dashboard', icon: ShieldCheck, badge: 'ADMIN' },
+      { href: '/admin', id: 'overview', label: 'Admin Dashboard', icon: ShieldCheck, badge: 'ADMIN' },
+      { href: '/admin?tab=verify', id: 'gate', label: 'Gate Operations', icon: QrCode, badge: 'GATE' },
+      { href: '/admin?tab=bookings', id: 'bookings', label: 'Booking Management', icon: CalendarCheck, badge: 'BOOKINGS' },
+      { href: '/admin?tab=slots', id: 'slots', label: 'Slot Capacity Manager', icon: Layers, badge: 'SLOTS' },
+      { href: '/admin?tab=farmers', id: 'farmers', label: 'Farmer Master Directory', icon: Tractor, badge: 'FARMERS' },
+      { href: '/admin?tab=analysis', id: 'analysis', label: 'Database & Reports', icon: BarChart3, badge: 'DBMS' },
+      { href: '/admin?tab=access', id: 'access', label: 'Manage Roles (RBAC)', icon: Users, badge: 'ACCESS' },
     ];
   } else if (user?.role === 'Mandi_Officer') {
     navLinks = [
-      { href: '/admin', label: 'Admin Dashboard', icon: ShieldCheck, badge: 'OFFICER' },
+      { href: '/admin?tab=verify', id: 'gate', label: 'Gate Operations', icon: QrCode, badge: 'OFFICER' },
+      { href: '/admin?tab=bookings', id: 'bookings', label: 'Booking Management', icon: CalendarCheck, badge: 'BOOKINGS' },
     ];
   } else if (user?.role === 'Farmer') {
     navLinks = [
-      { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'SLOTS' },
-      { href: '/farmer?tab=history', label: 'My Bookings & Passes', icon: CalendarCheck, badge: 'PASSES' },
+      { href: '/farmer', id: 'farmer-book', label: 'Book Arrival Slot', icon: Tractor, badge: 'SLOTS' },
+      { href: '/farmer?tab=history', id: 'farmer-history', label: 'My Bookings & Passes', icon: CalendarCheck, badge: 'PASSES' },
     ];
   } else {
     // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin / Officer links)
     navLinks = [
-      { href: '/', label: 'Home Portal', icon: Layers },
-      { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'FARMER' },
+      { href: '/', id: 'home', label: 'Home Portal', icon: Layers },
+      { href: '/farmer', id: 'farmer-book', label: 'Book Arrival Slot', icon: Tractor, badge: 'FARMER' },
     ];
   }
 
   const isLinkActive = (link) => {
     if (!link) return false;
-    const [pathPart, queryPart] = link.href.split('?');
+    const [pathPart] = link.href.split('?');
     if (pathname !== pathPart) return false;
 
-    // If link has query parameters (e.g. /farmer?tab=history)
-    if (queryPart) {
-      const linkParams = new URLSearchParams(queryPart);
-      const linkTab = linkParams.get('tab');
-      return currentTab === linkTab;
+    if (pathname === '/admin') {
+      const activeTabNorm = (currentTab || (user?.role === 'Mandi_Officer' ? 'verify' : 'overview')).toLowerCase();
+
+      if (link.id === 'overview') {
+        return activeTabNorm === 'overview';
+      }
+      if (link.id === 'gate') {
+        return ['verify', 'active', 'confirmed', 'gate', 'inprocess', 'expected'].includes(activeTabNorm);
+      }
+      if (link.id === 'bookings') {
+        return ['bookings', 'completed', 'cancelled', 'history', 'done'].includes(activeTabNorm);
+      }
+      if (link.id === 'slots') {
+        return ['slots', 'capacity'].includes(activeTabNorm);
+      }
+      if (link.id === 'farmers') {
+        return ['farmers', 'directory'].includes(activeTabNorm);
+      }
+      if (link.id === 'analysis') {
+        return ['analysis', 'dbms', 'reports'].includes(activeTabNorm);
+      }
+      if (link.id === 'access') {
+        return ['access', 'users', 'rbac'].includes(activeTabNorm);
+      }
     }
 
-    // Link has no query string (e.g. /admin, /farmer, /)
-    if (pathPart === '/admin') {
-      return pathname === '/admin';
-    }
-    if (pathPart === '/farmer') {
+    if (pathname === '/farmer') {
+      if (link.id === 'farmer-history') {
+        return currentTab === 'history';
+      }
       return !currentTab || currentTab === 'book';
     }
+
     return true;
   };
 
