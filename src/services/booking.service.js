@@ -5,6 +5,11 @@ const FarmerRepository = require('../repositories/farmer.repository');
 const ProduceRepository = require('../repositories/produce.repository');
 const UserRepository = require('../repositories/user.repository');
 const { generateToken } = require('../utils/tokenGenerator');
+const { 
+  getTodayISTDateString, 
+  getTomorrowISTDateString, 
+  formatToISTDateString 
+} = require('../utils/dateUtils');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const AuditService = require('./audit.service');
@@ -15,7 +20,7 @@ const BookingService = {
    * Concurrency-safe atomic booking creation with row-level locking
    * One farmer account represents one farmer identity.
    */
-  async createBooking({ Farmer_ID, Slot_ID, Produce_ID, Estimated_Weight_Tons }, authUser = null) {
+  async createBooking({ Farmer_ID, Slot_ID, Produce_ID, Estimated_Weight_Tons }, authUser = null, options = {}) {
     const requestedWeight = parseFloat(Estimated_Weight_Tons);
     if (isNaN(requestedWeight) || requestedWeight <= 0) {
       throw new AppError('Estimated weight must be a positive number', 400, 'INVALID_WEIGHT');
@@ -109,18 +114,27 @@ const BookingService = {
         throw new AppError(`Slot with ID ${Slot_ID} does not exist`, 404, 'SLOT_NOT_FOUND');
       }
 
-      // 5. STEP C: Validate slot status and date
+      // 5. STEP C: Validate slot status and date (Strict Advance Booking Policy)
       if (slot.Slot_Status === 'Closed') {
         throw new AppError('This time-slot has been administratively closed for bookings', 400, 'SLOT_CLOSED');
       }
 
-      const todayStr = new Date().toISOString().split('T')[0];
-      const slotDateStr = typeof slot.Slot_Date === 'string' 
-        ? slot.Slot_Date.split('T')[0] 
-        : new Date(slot.Slot_Date).toISOString().split('T')[0];
+      const refDate = (options && options.referenceDate) || new Date();
+      const todayIST = getTodayISTDateString(refDate);
+      const slotDateStr = formatToISTDateString(slot.Slot_Date);
 
-      if (slotDateStr < todayStr) {
+      // Check 5A: Past dates are strictly rejected
+      if (slotDateStr < todayIST) {
         throw new AppError(`Cannot book slot for past date (${slotDateStr})`, 400, 'PAST_DATE_NOT_BOOKABLE');
+      }
+
+      // Check 5B: Strict Next-Day Advance Booking Policy (Same-day booking prohibited for farmers)
+      if (slotDateStr === todayIST) {
+        throw new AppError(
+          'Same-day booking is not permitted. Please select tomorrow or a future date.',
+          400,
+          'SAME_DAY_BOOKING_NOT_PERMITTED'
+        );
       }
 
       // 6. STEP D: ENFORCE "ONE BOOKING PER FARMER PER DAY" RULE

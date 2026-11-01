@@ -1,6 +1,7 @@
 const express = require('express');
 const { testConnection } = require('../config/database');
 const { successResponse, errorResponse } = require('../utils/apiResponse');
+const { getTodayISTDateString, getTomorrowISTDateString } = require('../utils/dateUtils');
 
 const router = express.Router();
 
@@ -9,12 +10,16 @@ const router = express.Router();
  * GET /api/v1/health
  */
 router.get('/', (req, res) => {
+  const now = new Date();
   return successResponse(res, {
     message: 'AgriSlot backend API is running normally',
     data: {
       status: 'UP',
       uptimeSeconds: process.uptime(),
-      timestamp: new Date().toISOString()
+      timestamp: now.toISOString(),
+      istDate: getTodayISTDateString(now),
+      minBookingDate: getTomorrowISTDateString(now),
+      advanceBookingPolicy: 'NEXT_DAY_ONLY'
     }
   });
 });

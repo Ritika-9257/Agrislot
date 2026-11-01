@@ -29,7 +29,7 @@ export default function Header({ title }) {
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setCurrentTime(now.toLocaleTimeString('en-IN', { hour12: false }) + ' IST');
+      setCurrentTime(now.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }) + ' IST');
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
