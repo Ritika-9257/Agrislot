@@ -328,6 +328,7 @@ function AdminPortalContent() {
       }
 
       setActionSuccessMessage(`✓ Gate clearance granted to Token ${targetToken}. Vehicle is now 'Checked-In' inside the yard.`);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('agrislot_refresh_notifications'));
     } catch (err) {
       setActionSuccessMessage(`✓ Token ${targetToken} checked in.`);
     }
@@ -358,6 +359,7 @@ function AdminPortalContent() {
       }
 
       setActionSuccessMessage(`✓ Token ${targetToken} moved to 'In Process' (weighbridge / auction bay).`);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('agrislot_refresh_notifications'));
     } catch (err) {
       setActionSuccessMessage(`✓ Token ${targetToken} in process.`);
     }
@@ -391,6 +393,7 @@ function AdminPortalContent() {
       }
 
       setActionSuccessMessage(`✓ Produce delivery for Token ${targetToken} completed. Permanently preserved in MySQL database archive.`);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('agrislot_refresh_notifications'));
     } catch (err) {
       setActionSuccessMessage(`✓ Token ${targetToken} marked completed.`);
     }
@@ -421,6 +424,7 @@ function AdminPortalContent() {
       }
 
       setActionSuccessMessage(`⚠️ Token ${targetToken} marked as No-Show. Slot capacity remains allocated for past arrival window.`);
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('agrislot_refresh_notifications'));
     } catch (err) {
       setActionSuccessMessage(`⚠️ Token ${targetToken} marked as No-Show.`);
     }

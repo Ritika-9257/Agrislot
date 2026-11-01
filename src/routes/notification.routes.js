@@ -1,5 +1,6 @@
 const express = require('express');
 const NotificationService = require('../services/notification.service');
+const UserRepository = require('../repositories/user.repository');
 const { authenticateOptional } = require('../middleware/authenticate');
 const { successResponse } = require('../utils/apiResponse');
 
@@ -10,18 +11,28 @@ router.use(authenticateOptional);
 // GET /api/v1/notifications
 router.get('/', async (req, res, next) => {
   try {
-    let farmerId = null;
-    let userId = null;
+    let farmerId = req.query.farmerId ? parseInt(req.query.farmerId, 10) : null;
+    let userId = req.query.userId ? parseInt(req.query.userId, 10) : null;
 
-    if (req.user && req.user.role === 'Farmer') {
-      farmerId = req.user.farmerId || null;
-      userId = req.user.userId || null;
-    } else if (req.user && (req.user.role === 'Admin' || req.user.role === 'Mandi_Officer')) {
-      farmerId = req.query.farmerId ? parseInt(req.query.farmerId, 10) : null;
-      userId = req.user.userId || null;
-    } else {
-      farmerId = req.query.farmerId ? parseInt(req.query.farmerId, 10) : null;
-      userId = req.query.userId ? parseInt(req.query.userId, 10) : null;
+    if (req.user) {
+      userId = req.user.userId;
+      if (req.user.farmerId) {
+        farmerId = req.user.farmerId;
+      } else {
+        const userRec = await UserRepository.findById(req.user.userId);
+        if (userRec && userRec.Farmer_ID) {
+          farmerId = userRec.Farmer_ID;
+        }
+      }
+    }
+
+    // If an unauthenticated caller did not provide farmerId or userId, return empty array
+    if (!farmerId && !userId) {
+      return successResponse(res, {
+        message: 'In-app notifications retrieved successfully',
+        data: [],
+        meta: { unreadCount: 0 }
+      });
     }
 
     const unreadOnly = req.query.unread === 'true';
@@ -30,7 +41,7 @@ router.get('/', async (req, res, next) => {
       farmerId,
       userId,
       unreadOnly,
-      limit: parseInt(req.query.limit, 10) || 30
+      limit: parseInt(req.query.limit, 10) || 50
     });
 
     return successResponse(res, {

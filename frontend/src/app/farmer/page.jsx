@@ -232,6 +232,10 @@ function FarmerPortalContent() {
         prev.map(b => (b.Booking_ID === bId ? { ...b, Booking_Status: 'Cancelled' } : b))
       );
       setCancelModal({ open: false, booking: null });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('agrislot_refresh_notifications'));
+      }
       if (selectedMandiId && bookingDate) {
         const res = await AgriSlotAPI.getSlots({ mandiId: selectedMandiId, date: bookingDate });
         if (res?.data) setDbSlots(res.data);
@@ -302,6 +306,10 @@ function FarmerPortalContent() {
         setMyBookings(prev => [finalizedPass, ...prev]);
         setSuccessBooking(finalizedPass);
         setShowGatePassModal(true);
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('agrislot_refresh_notifications'));
+        }
 
         const updatedSlots = await AgriSlotAPI.getSlots({ mandiId: selectedMandiId, date: bookingDate });
         if (updatedSlots?.data) setDbSlots(updatedSlots.data);
