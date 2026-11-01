@@ -22,7 +22,8 @@ import {
   Layers,
   Sparkles,
   Lock,
-  CalendarDays
+  CalendarDays,
+  X
 } from 'lucide-react';
 import { AgriSlotAPI } from '@/lib/api';
 import GatePassModal from '@/components/GatePassModal';
