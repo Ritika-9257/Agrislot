@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { 
   Search, 
@@ -15,13 +16,16 @@ import {
   User, 
   Phone, 
   ShieldCheck, 
+  ShieldAlert,
   AlertCircle,
   Truck,
   Camera
 } from 'lucide-react';
 import { AgriSlotAPI } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 function VerifyContent() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
   const initialToken = searchParams.get('token') || '';
 
@@ -78,6 +82,33 @@ function VerifyContent() {
   const status = booking ? (booking.Booking_Status || booking.bookingStatus || 'Confirmed') : '';
   const weight = booking ? Number(booking.Estimated_Weight_Tons || booking.estimatedWeightTons || 4.5) : 4.5;
   const bookingId = booking ? (booking.Booking_ID || booking.bookingId || '101') : '101';
+
+  if (user?.role === 'Farmer') {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 bg-white rounded-bento border-[2.5px] border-navy-border shadow-bento text-center space-y-4">
+        <div className="w-14 h-14 mx-auto rounded-full bg-coral/30 border-2 border-navy-border flex items-center justify-center text-coral-dark">
+          <ShieldAlert className="w-7 h-7" />
+        </div>
+        <h2 className="text-2xl font-display font-black text-navy-border">
+          Gatekeeper Terminal Restricted
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-600 font-medium">
+          Gate-Pass token verification is exclusively restricted to authorized APMC Mandi Officers and Administrators.
+        </p>
+        <p className="text-xs text-slate-500 font-mono">
+          As a registered Farmer, you can view, download, and track the live status of all your bookings directly in your portal.
+        </p>
+        <div className="pt-2">
+          <Link
+            href="/farmer?tab=history"
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-xs uppercase tracking-wider border-[2px] border-navy-border shadow-bento-sm active:translate-y-0.5 transition-all"
+          >
+            Go to My Bookings &amp; Passes
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">

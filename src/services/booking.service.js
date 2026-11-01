@@ -339,6 +339,31 @@ const BookingService = {
       changedBy
     });
 
+    // Notify the specific farmer of their token lifecycle progression
+    const statusTitles = {
+      'Checked-In': `Gate Clearance Approved — Token ${current.Token_Number}`,
+      'In Process': `Unloading In Process — Token ${current.Token_Number}`,
+      'Completed': `Mandi Visit Completed — Token ${current.Token_Number}`,
+      'No-Show': `Arrival Marked No-Show — Token ${current.Token_Number}`
+    };
+    const statusMessages = {
+      'Checked-In': `Your vehicle with Token ${current.Token_Number} has been admitted into the APMC yard.`,
+      'In Process': `Your produce for Token ${current.Token_Number} is currently undergoing weighbridge inspection and unloading.`,
+      'Completed': `Your visit for Token ${current.Token_Number} is successfully completed. Unloading finished.`,
+      'No-Show': `Your scheduled arrival window for Token ${current.Token_Number} has lapsed and was marked as No-Show.`
+    };
+
+    if (statusTitles[newStatus]) {
+      NotificationService.notify({
+        farmerId: current.Farmer_ID,
+        title: statusTitles[newStatus],
+        message: statusMessages[newStatus],
+        type: newStatus.toUpperCase().replace(/\s+/g, '_'),
+        entityType: 'Booking',
+        entityId: bookingId
+      });
+    }
+
     return {
       bookingId,
       previousStatus: current.Booking_Status,

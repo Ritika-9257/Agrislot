@@ -76,14 +76,12 @@ function SidebarContent() {
     navLinks = [
       { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'SLOTS' },
       { href: '/farmer?tab=history', label: 'My Bookings & Passes', icon: CalendarCheck, badge: 'PASSES' },
-      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   } else {
     // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin / Officer links)
     navLinks = [
       { href: '/', label: 'Home Portal', icon: Layers },
       { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'FARMER' },
-      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   }
 
@@ -216,19 +214,20 @@ function SidebarContent() {
             </nav>
           </div>
 
-          {/* Practical Mandi Service Status Widget */}
-          <div className="bg-lilac p-3.5 rounded-bento-sm border-[2px] border-navy-border shadow-bento-sm space-y-1">
+          {/* APMC Farmer Helpdesk & Gate Hotline */}
+          <div className="bg-mint-foam/80 p-3.5 rounded-bento-sm border-[2px] border-navy-border shadow-bento-sm space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] font-bold text-lilac-dark uppercase">MANDI OPERATIONAL</span>
-              <span
-                className={`w-2 h-2 rounded-full pulse-dot ${
-                  backendOnline === true ? 'bg-emerald-500' : 'bg-amber-400'
-                }`}
-              />
+              <span className="font-mono text-[10px] font-bold text-forest uppercase tracking-wider">APMC HELPDESK</span>
+              <span className="px-1.5 py-0.5 rounded text-[8.5px] font-mono font-black bg-forest text-white border border-navy-border">
+                24x7 TOLL-FREE
+              </span>
             </div>
-            <div className="font-bold text-xs text-navy-border">SURAT &amp; NASHIK HUBS</div>
-            <div className="text-[11px] text-slate-600 flex items-center gap-1 font-mono font-medium">
-              Daily Slots Open • Fast Clearance
+            <div className="font-display font-black text-xs text-navy-border flex items-center gap-1.5">
+              <span>📞</span>
+              <span>1800-233-0199</span>
+            </div>
+            <div className="text-[10.5px] text-slate-600 font-mono font-medium leading-tight">
+              Kisan Helpline &amp; Gate Assistance
             </div>
           </div>
         </div>

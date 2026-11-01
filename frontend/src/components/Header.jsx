@@ -39,9 +39,14 @@ export default function Header({ title }) {
   useEffect(() => {
     async function loadNotifications() {
       try {
+        if (!user) {
+          setNotifications([]);
+          setUnreadCount(0);
+          return;
+        }
         const res = await AgriSlotAPI.getNotifications({
-          farmerId: user?.farmerId,
-          userId: user?.userId
+          farmerId: user.farmerId,
+          userId: user.userId
         });
         if (res.data) {
           setNotifications(res.data);

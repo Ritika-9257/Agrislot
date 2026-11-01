@@ -109,11 +109,13 @@ const NotificationRepository = {
         sql += ' AND (Farmer_ID = ? OR User_ID = ?)';
         params.push(farmerId, userId);
       } else if (farmerId) {
-        sql += ' AND (Farmer_ID = ? OR Farmer_ID IS NULL)';
+        sql += ' AND Farmer_ID = ?';
         params.push(farmerId);
       } else if (userId) {
-        sql += ' AND (User_ID = ? OR User_ID IS NULL)';
+        sql += ' AND User_ID = ?';
         params.push(userId);
+      } else {
+        sql += ' AND Farmer_ID IS NULL AND User_ID IS NULL';
       }
 
       if (unreadOnly) {
@@ -127,6 +129,11 @@ const NotificationRepository = {
       return rows;
     } catch {
       let filtered = [...IN_MEMORY_NOTIFICATIONS];
+      if (farmerId) {
+        filtered = filtered.filter(n => n.Farmer_ID === farmerId);
+      } else if (userId) {
+        filtered = filtered.filter(n => n.User_ID === userId);
+      }
       if (unreadOnly) {
         filtered = filtered.filter(n => !n.Is_Read);
       }
