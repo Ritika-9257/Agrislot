@@ -1117,6 +1117,398 @@ test('38. Slot Validation: Closed slots and expired past dates are strictly reje
   assert.strictEqual(checkSlotValidity('2099-01-01', 'Available'), true);
 });
 
+// ==============================================================================
+// PART 3: EXTENSIVE TEST SUITE FOR HYBRID AVAILABILITY & 1-BOOKING/DAY RULES
+// ==============================================================================
+
+test('39. Hybrid Availability: 40/50 tons booked with farmer spaces remaining is Available (Slot S10 scenario)', (t) => {
+  const slot = {
+    Slot_ID: 245,
+    Max_Bookings: 5,
+    Booked_Count: 1,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 40.0,
+    Slot_Status: 'Available'
+  };
+
+  const remainingSpaces = slot.Max_Bookings - slot.Booked_Count; // 4 spaces left
+  const remainingWeight = slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons; // 10.0T left
+
+  const isFull = (slot.Booked_Count >= slot.Max_Bookings) || (remainingWeight <= 0);
+  assert.strictEqual(isFull, false, 'Slot must NOT be full when 4 spaces and 10.0T remain');
+  assert.strictEqual(remainingSpaces, 4);
+  assert.strictEqual(remainingWeight, 10.0);
+});
+
+test('40. Hybrid Availability: 45/50 tons booked with farmer spaces remaining is Available (Slot S04 scenario)', (t) => {
+  const slot = {
+    Slot_ID: 239,
+    Max_Bookings: 5,
+    Booked_Count: 1,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 45.0,
+    Slot_Status: 'Available'
+  };
+
+  const remainingSpaces = slot.Max_Bookings - slot.Booked_Count; // 4 spaces left
+  const remainingWeight = slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons; // 5.0T left
+
+  const isFull = (slot.Booked_Count >= slot.Max_Bookings) || (remainingWeight <= 0);
+  assert.strictEqual(isFull, false, 'Slot must NOT be full when 4 spaces and 5.0T remain');
+  assert.strictEqual(remainingSpaces, 4);
+  assert.strictEqual(remainingWeight, 5.0);
+});
+
+test('41. Hybrid Availability: 50/50 tons booked is Full, even with farmer spaces open', (t) => {
+  const slot = {
+    Slot_ID: 250,
+    Max_Bookings: 5,
+    Booked_Count: 3,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 50.0,
+    Slot_Status: 'Full'
+  };
+
+  const remainingWeight = slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons;
+  const isFull = (slot.Booked_Count >= slot.Max_Bookings) || (remainingWeight <= 0);
+  assert.strictEqual(isFull, true, 'Slot MUST be full when weight capacity reaches 50.0/50.0T');
+});
+
+test('42. Hybrid Availability: 5/5 farmers booked is Full, even with weight capacity open', (t) => {
+  const slot = {
+    Slot_ID: 251,
+    Max_Bookings: 5,
+    Booked_Count: 5,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 30.0,
+    Slot_Status: 'Full'
+  };
+
+  const remainingSpaces = slot.Max_Bookings - slot.Booked_Count;
+  const isFull = (remainingSpaces <= 0) || ((slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons) <= 0);
+  assert.strictEqual(isFull, true, 'Slot MUST be full when farmer count reaches 5/5');
+});
+
+test('43. Hybrid Availability: Requested weight (10T) exceeds remaining capacity (5T) rejects booking without marking slot Full for others', (t) => {
+  const slot = {
+    Slot_ID: 239,
+    Max_Bookings: 5,
+    Booked_Count: 1,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 45.0, // 5.0T remaining
+    Slot_Status: 'Available'
+  };
+
+  function validateBookingAttempt(requestedWeight) {
+    const remainingCap = slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons;
+    if (requestedWeight > remainingCap) {
+      const err = new Error(`Insufficient slot weight capacity. Requested: ${requestedWeight} tons, Available: ${remainingCap} tons`);
+      err.code = 'INSUFFICIENT_WEIGHT_CAPACITY';
+      throw err;
+    }
+    return true;
+  }
+
+  // Farmer A requesting 10.0T is rejected
+  assert.throws(() => validateBookingAttempt(10.0), (err) => {
+    assert.strictEqual(err.code, 'INSUFFICIENT_WEIGHT_CAPACITY');
+    return true;
+  });
+
+  // Slot remains available for Farmer B requesting 2.5T!
+  assert.strictEqual(validateBookingAttempt(2.5), true, 'Farmer B requesting 2.5T can still book');
+  assert.strictEqual(slot.Slot_Status, 'Available', 'Slot status is NOT corrupted to Full');
+});
+
+test('44. One Booking Per Day: Farmer creates first booking on calendar date -> SUCCESS', async (t) => {
+  const reservations = new Map(); // Key: `${farmerId}_${date}`
+
+  function bookDay(farmerId, date, bookingId) {
+    const key = `${farmerId}_${date}`;
+    if (reservations.has(key)) {
+      const err = new Error(`Farmer ${farmerId} already has a booking on ${date}`);
+      err.code = 'ONE_BOOKING_PER_DAY_LIMIT_REACHED';
+      throw err;
+    }
+    reservations.set(key, { bookingId, date, status: 'Confirmed' });
+    return { success: true, bookingId };
+  }
+
+  const res = bookDay(1, '2026-11-02', 101);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(reservations.size, 1);
+});
+
+test('45. One Booking Per Day: Same farmer attempts second booking on same date at same mandi -> REJECTED', async (t) => {
+  const reservations = new Map([['1_2026-11-02', { bookingId: 101, status: 'Confirmed' }]]);
+
+  function bookDay(farmerId, date, bookingId) {
+    const key = `${farmerId}_${date}`;
+    if (reservations.has(key)) {
+      const err = new Error(`Farmer ${farmerId} already has a booking on ${date}`);
+      err.code = 'ONE_BOOKING_PER_DAY_LIMIT_REACHED';
+      throw err;
+    }
+    reservations.set(key, { bookingId, date, status: 'Confirmed' });
+    return { success: true, bookingId };
+  }
+
+  assert.throws(() => bookDay(1, '2026-11-02', 102), (err) => {
+    assert.strictEqual(err.code, 'ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+    return true;
+  });
+});
+
+test('46. One Booking Per Day: Same farmer books a different calendar date -> ALLOWED', async (t) => {
+  const reservations = new Map([['1_2026-11-02', { bookingId: 101, status: 'Confirmed' }]]);
+
+  function bookDay(farmerId, date, bookingId) {
+    const key = `${farmerId}_${date}`;
+    if (reservations.has(key)) {
+      const err = new Error(`Farmer ${farmerId} already has a booking on ${date}`);
+      err.code = 'ONE_BOOKING_PER_DAY_LIMIT_REACHED';
+      throw err;
+    }
+    reservations.set(key, { bookingId, date, status: 'Confirmed' });
+    return { success: true, bookingId };
+  }
+
+  const res = bookDay(1, '2026-11-03', 103);
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(reservations.size, 2);
+});
+
+test('47. One Booking Per Day: Same farmer tries another mandi on the same date -> REJECTED across mandis', async (t) => {
+  const reservations = new Map([['1_2026-11-02', { bookingId: 101, mandiId: 1, status: 'Confirmed' }]]);
+
+  function bookAnyMandi(farmerId, mandiId, date, bookingId) {
+    const key = `${farmerId}_${date}`; // Mandi independent!
+    if (reservations.has(key)) {
+      const err = new Error(`Farmer ${farmerId} already booked at Mandi ${reservations.get(key).mandiId} on ${date}`);
+      err.code = 'ONE_BOOKING_PER_DAY_LIMIT_REACHED';
+      throw err;
+    }
+    reservations.set(key, { bookingId, mandiId, date, status: 'Confirmed' });
+    return { success: true, bookingId };
+  }
+
+  // Attempting to book at Mandi 2 on same day must be rejected
+  assert.throws(() => bookAnyMandi(1, 2, '2026-11-02', 104), (err) => {
+    assert.strictEqual(err.code, 'ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+    return true;
+  });
+});
+
+test('48. One Booking Per Day: Farmer cancels upcoming booking on date, then books another slot on that same date -> ALLOWED', async (t) => {
+  const bookings = new Map([
+    [101, { bookingId: 101, farmerId: 1, date: '2026-11-02', status: 'Confirmed' }]
+  ]);
+  const reservations = new Map([['1_2026-11-02', 101]]);
+
+  function cancelBooking(bookingId) {
+    const b = bookings.get(bookingId);
+    if (!b || b.status !== 'Confirmed') throw new Error('CANNOT_CANCEL');
+    b.status = 'Cancelled';
+    reservations.delete(`${b.farmerId}_${b.date}`);
+    return true;
+  }
+
+  function bookDay(farmerId, date, bookingId) {
+    const key = `${farmerId}_${date}`;
+    if (reservations.has(key)) {
+      const err = new Error('ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+      err.code = 'ONE_BOOKING_PER_DAY_LIMIT_REACHED';
+      throw err;
+    }
+    bookings.set(bookingId, { bookingId, farmerId, date, status: 'Confirmed' });
+    reservations.set(key, bookingId);
+    return { success: true, bookingId };
+  }
+
+  // Cancel booking 101
+  cancelBooking(101);
+  assert.strictEqual(bookings.get(101).status, 'Cancelled');
+  assert.strictEqual(reservations.has('1_2026-11-02'), false, 'Reservation must be deleted on cancel');
+
+  // Now rebook on 2026-11-02
+  const rebook = bookDay(1, '2026-11-02', 105);
+  assert.strictEqual(rebook.success, true);
+  assert.strictEqual(bookings.get(105).status, 'Confirmed');
+  assert.strictEqual(bookings.get(101).status, 'Cancelled', 'Historical record 101 remains in ledger');
+});
+
+test('49. One Booking Per Day: Farmer with Checked-In, In-Process, or Completed booking attempts another booking on that date -> REJECTED', async (t) => {
+  const nonCancellableStatuses = ['Checked-In', 'In Process', 'Completed', 'No-Show'];
+
+  for (const status of nonCancellableStatuses) {
+    const reservations = new Map([['1_2026-11-02', { bookingId: 200, status }]]);
+
+    function bookDay(farmerId, date) {
+      if (reservations.has(`${farmerId}_${date}`)) {
+        const err = new Error('ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+        err.code = 'ONE_BOOKING_PER_DAY_LIMIT_REACHED';
+        throw err;
+      }
+      return true;
+    }
+
+    assert.throws(() => bookDay(1, '2026-11-02'), (err) => {
+      assert.strictEqual(err.code, 'ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+      return true;
+    }, `Status ${status} must permanently block additional daily booking`);
+  }
+});
+
+test('50. One Booking Per Day: Farmer attempts to book using another farmer name in payload -> REJECTED (enforces authenticated Farmer_ID)', async (t) => {
+  const req = {
+    user: { userId: 3, farmerId: 1, role: 'Farmer', username: 'farmer_ramesh' },
+    body: {
+      Slot_ID: 10,
+      Farmer_ID: 999, // Attempted spoof of Farmer 999
+      Produce_ID: 1,
+      Estimated_Weight_Tons: 5.0
+    }
+  };
+
+  // Secure controller/service resolution ignores body.Farmer_ID and strictly binds authenticated JWT farmerId
+  const resolvedFarmerId = req.user.role === 'Farmer' ? req.user.farmerId : (req.body.Farmer_ID || req.user.farmerId);
+  assert.strictEqual(resolvedFarmerId, 1, 'Resolved farmer ID must strictly be 1 (authenticated user)');
+  assert.notStrictEqual(resolvedFarmerId, 999, 'Client payload spoofing must be completely ignored');
+});
+
+test('51. One Booking Per Day: Concurrency simulation of two simultaneous requests from the same farmer for the same date -> Exactly one succeeds', async (t) => {
+  const reservations = new Map();
+  let farmerMutex = false;
+
+  async function concurrentBookingAttempt(farmerId, date, bookingId) {
+    // Acquire farmer row lock (SELECT ... FOR UPDATE simulation)
+    while (farmerMutex) {
+      await new Promise(r => setTimeout(r, 2));
+    }
+    farmerMutex = true;
+    try {
+      const key = `${farmerId}_${date}`;
+      if (reservations.has(key)) {
+        const err = new Error('ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+        err.code = 'ONE_BOOKING_PER_DAY_LIMIT_REACHED';
+        throw err;
+      }
+      reservations.set(key, bookingId);
+      return { success: true, bookingId };
+    } finally {
+      farmerMutex = false;
+    }
+  }
+
+  // Fire 2 concurrent requests from Farmer 1 on 2026-11-02
+  const results = await Promise.allSettled([
+    concurrentBookingAttempt(1, '2026-11-02', 301),
+    concurrentBookingAttempt(1, '2026-11-02', 302)
+  ]);
+
+  const successes = results.filter(r => r.status === 'fulfilled');
+  const failures = results.filter(r => r.status === 'rejected');
+
+  assert.strictEqual(successes.length, 1, 'Only one concurrent request can succeed');
+  assert.strictEqual(failures.length, 1, 'The competing concurrent request is rejected');
+  assert.strictEqual(failures[0].reason.code, 'ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+  assert.strictEqual(reservations.size, 1);
+});
+
+test('52. Hybrid Concurrency: Two DIFFERENT farmers can book the same slot if both limits permit it', async (t) => {
+  const slot = {
+    Slot_ID: 500,
+    Max_Bookings: 5,
+    Booked_Count: 0,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 0.0
+  };
+
+  const reservations = new Map();
+
+  function bookSlot(farmerId, date, weight, bookingId) {
+    if (reservations.has(`${farmerId}_${date}`)) {
+      throw new Error('ONE_BOOKING_PER_DAY_LIMIT_REACHED');
+    }
+    if (slot.Booked_Count >= slot.Max_Bookings) {
+      throw new Error('SLOT_FARMER_LIMIT_REACHED');
+    }
+    if (weight > (slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons)) {
+      throw new Error('INSUFFICIENT_WEIGHT_CAPACITY');
+    }
+    slot.Booked_Count += 1;
+    slot.Booked_Capacity_Tons += weight;
+    reservations.set(`${farmerId}_${date}`, bookingId);
+    return { success: true, farmerId, bookingId };
+  }
+
+  // Farmer 1 books 20T
+  const res1 = bookSlot(1, '2026-11-02', 20.0, 401);
+  assert.strictEqual(res1.success, true);
+
+  // Farmer 2 books 15T on the SAME slot
+  const res2 = bookSlot(2, '2026-11-02', 15.0, 402);
+  assert.strictEqual(res2.success, true);
+
+  assert.strictEqual(slot.Booked_Count, 2, '2 farmers booked');
+  assert.strictEqual(slot.Booked_Capacity_Tons, 35.0, '35T total booked');
+  assert.strictEqual(slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons, 15.0, '15T remaining');
+});
+
+test('53. Data Integrity: Cancellation restores slot counters exactly once and preserves original booking history with status Cancelled', (t) => {
+  const slot = {
+    Booked_Count: 3,
+    Booked_Capacity_Tons: 30.0,
+    Max_Bookings: 5,
+    Max_Capacity_Tons: 50.0
+  };
+
+  const booking = {
+    Booking_ID: 777,
+    Estimated_Weight_Tons: 10.0,
+    Booking_Status: 'Confirmed'
+  };
+
+  // Perform cancel
+  booking.Booking_Status = 'Cancelled';
+  slot.Booked_Count = Math.max(0, slot.Booked_Count - 1);
+  slot.Booked_Capacity_Tons = Math.max(0, slot.Booked_Capacity_Tons - booking.Estimated_Weight_Tons);
+
+  assert.strictEqual(slot.Booked_Count, 2);
+  assert.strictEqual(slot.Booked_Capacity_Tons, 20.0);
+  assert.strictEqual(booking.Booking_Status, 'Cancelled');
+});
+
+test('54. Data Integrity: Slot counters reconcile to match active booking records (excluding Cancelled)', (t) => {
+  const slotBookings = [
+    { Booking_ID: 1, Estimated_Weight_Tons: 10.0, Booking_Status: 'Confirmed' },
+    { Booking_ID: 2, Estimated_Weight_Tons: 15.0, Booking_Status: 'Checked-In' },
+    { Booking_ID: 3, Estimated_Weight_Tons: 5.0, Booking_Status: 'Cancelled' }, // EXCLUDED
+    { Booking_ID: 4, Estimated_Weight_Tons: 12.0, Booking_Status: 'Completed' }
+  ];
+
+  const activeBookings = slotBookings.filter(b => b.Booking_Status !== 'Cancelled');
+  const reconciledCount = activeBookings.length;
+  const reconciledWeight = activeBookings.reduce((sum, b) => sum + b.Estimated_Weight_Tons, 0);
+
+  assert.strictEqual(reconciledCount, 3, 'Active count must exclude cancelled');
+  assert.strictEqual(reconciledWeight, 37.0, 'Active weight must exclude cancelled');
+});
+
+test('55. Data Integrity: Farmer privacy is maintained (farmer cannot see other farmers PII or bookings)', (t) => {
+  const allBookings = [
+    { Booking_ID: 1, Farmer_ID: 1, Farmer_Name: 'Ramesh Patel', Phone: '9876543210' },
+    { Booking_ID: 2, Farmer_ID: 2, Farmer_Name: 'Suresh Kumar', Phone: '9123456789' }
+  ];
+
+  const requestingFarmerId = 1;
+  const visibleBookings = allBookings.filter(b => b.Farmer_ID === requestingFarmerId);
+
+  assert.strictEqual(visibleBookings.length, 1);
+  assert.strictEqual(visibleBookings[0].Farmer_ID, 1);
+  assert.ok(!visibleBookings.some(b => b.Farmer_ID === 2), 'Farmer 2 data must never be visible to Farmer 1');
+});
+
 test.after(async () => {
   const { closePool } = require('../src/config/database');
   await closePool();

@@ -113,6 +113,64 @@ const BookingRepository = {
     return rows[0] || null;
   },
 
+  /**
+   * Find an active non-cancelled booking for a farmer on a specific calendar date across any mandi
+   * Used for 'One Booking Per Farmer Per Day' rule enforcement
+   */
+  async findActiveBookingByFarmerAndDate(farmerId, slotDate, connection) {
+    const sql = `
+      SELECT 
+        b.Booking_ID,
+        b.Farmer_ID,
+        b.Slot_ID,
+        b.Token_Number,
+        b.Booking_Status,
+        b.Estimated_Weight_Tons,
+        s.Slot_Date,
+        s.Start_Time,
+        s.End_Time,
+        m.Mandi_ID,
+        m.Mandi_Name,
+        p.Produce_ID,
+        p.Produce_Name
+      FROM Bookings b
+      JOIN Slots s ON b.Slot_ID = s.Slot_ID
+      JOIN Mandis m ON s.Mandi_ID = m.Mandi_ID
+      JOIN Produce p ON b.Produce_ID = p.Produce_ID
+      WHERE b.Farmer_ID = ?
+        AND s.Slot_Date = ?
+        AND b.Booking_Status != 'Cancelled'
+      LIMIT 1
+      FOR UPDATE
+    `;
+    const [rows] = await connection.query(sql, [farmerId, slotDate]);
+    return rows[0] || null;
+  },
+
+  /**
+   * Insert reservation into Farmer_Daily_Reservations (enforces unique day constraint)
+   */
+  async createDailyReservation(farmerId, reservationDate, bookingId, connection) {
+    const sql = `
+      INSERT INTO Farmer_Daily_Reservations (Farmer_ID, Reservation_Date, Booking_ID)
+      VALUES (?, ?, ?)
+    `;
+    const [result] = await connection.query(sql, [farmerId, reservationDate, bookingId]);
+    return result.insertId;
+  },
+
+  /**
+   * Remove reservation upon cancellation so the farmer can re-book for the same date
+   */
+  async deleteDailyReservation(bookingId, connection) {
+    const sql = `
+      DELETE FROM Farmer_Daily_Reservations
+      WHERE Booking_ID = ?
+    `;
+    const [result] = await connection.query(sql, [bookingId]);
+    return result.affectedRows > 0;
+  },
+
   async updateStatus(bookingId, status, options = {}) {
     let executor = db;
     let officerId = null;

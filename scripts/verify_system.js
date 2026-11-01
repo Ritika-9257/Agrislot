@@ -51,7 +51,8 @@ const REQUIRED_TABLES = [
   'Transactions',
   'User_Login',
   'application_audit_log',
-  'notifications'
+  'notifications',
+  'Farmer_Daily_Reservations'
 ];
 
 const REQUIRED_ROUTINES = [

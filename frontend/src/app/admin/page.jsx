@@ -1407,6 +1407,17 @@ function AdminPortalContent() {
             </div>
           </div>
 
+          {/* 1 Booking Per Farmer Per Day DBMS Policy Indicator */}
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2 text-emerald-900 font-semibold">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span><strong>DBMS Policy Active:</strong> Strict 1-Booking-Per-Farmer-Per-Day enforced across all mandis via <code>Farmer_Daily_Reservations</code>.</span>
+            </div>
+            <span className="text-[11px] text-emerald-800">
+              Click any Farmer Name/ID below to inspect that producer&apos;s daily reservation history.
+            </span>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
@@ -1450,8 +1461,25 @@ function AdminPortalContent() {
                         {b.Token_Number || b.Gate_Pass_Token}
                       </td>
                       <td className="py-3 px-3">
-                        <div className="font-extrabold">{b.Farmer_Name || 'Farmer'}</div>
-                        <div className="text-[10px] text-gray-400">ID: #{b.Farmer_ID} • {b.Phone || b.Farmer_Phone || ''}</div>
+                        <button
+                          type="button"
+                          onClick={() => setBookingSearch(b.Farmer_Name || String(b.Farmer_ID))}
+                          className="font-extrabold text-navy-border hover:text-forest text-left transition-colors block"
+                          title="Click to filter daily history for this farmer"
+                        >
+                          {b.Farmer_Name || 'Farmer'}
+                        </button>
+                        <div className="text-[10px] text-gray-400">
+                          <button
+                            type="button"
+                            onClick={() => setBookingSearch(String(b.Farmer_ID))}
+                            className="hover:text-forest font-mono underline"
+                            title="Click to filter by Farmer ID"
+                          >
+                            ID: #{b.Farmer_ID}
+                          </button>
+                          {' '}• {b.Phone || b.Farmer_Phone || ''}
+                        </div>
                       </td>
                       <td className="py-3 px-3 font-bold text-gray-700">{b.Mandi_Name || 'APMC Surat'}</td>
                       <td className="py-3 px-3">
@@ -2197,6 +2225,17 @@ function AdminPortalContent() {
                 className="pl-8 pr-3 py-1.5 bg-gray-50 border border-navy-border rounded-lg text-xs font-bold focus:bg-white focus:outline-none"
               />
             </div>
+          </div>
+
+          {/* 1 Booking Per Farmer Per Day DBMS Policy Indicator */}
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2 text-emerald-900 font-semibold">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-emerald-700 shrink-0" />
+              <span><strong>DBMS Policy Active:</strong> Strict 1-Booking-Per-Farmer-Per-Day enforced across all mandis via <code>Farmer_Daily_Reservations</code>.</span>
+            </div>
+            <span className="text-[11px] text-emerald-800">
+              Click any Farmer Name/ID below to inspect that producer&apos;s daily reservation history.
+            </span>
           </div>
 
           <div className="overflow-x-auto">

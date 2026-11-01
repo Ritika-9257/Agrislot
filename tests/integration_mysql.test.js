@@ -45,4 +45,26 @@ test('Live MySQL Integration Test Suite', async (t) => {
       assert.ok(['Available', 'Full'].includes(slot.Availability_Status));
     }
   });
+
+  await t.test('5. Live MySQL: Slot S04 (45T) and S10 (40T) availability status is Available', async () => {
+    const s04 = await SlotRepository.findById(239);
+    const s10 = await SlotRepository.findById(245);
+    if (s04) {
+      assert.strictEqual(s04.Slot_Status, 'Available', 'Slot S04 (45T/50T) must be Available in MySQL');
+      assert.strictEqual(s04.Availability_Status, 'Available');
+    }
+    if (s10) {
+      assert.strictEqual(s10.Slot_Status, 'Available', 'Slot S10 (40T/50T) must be Available in MySQL');
+      assert.strictEqual(s10.Availability_Status, 'Available');
+    }
+  });
+
+  await t.test('6. Live MySQL: Farmer_Daily_Reservations table enforces unique reservation date per farmer', async () => {
+    const db = require('../src/config/database');
+    const [cols] = await db.query("SHOW COLUMNS FROM Farmer_Daily_Reservations LIKE 'Reservation_Date'");
+    assert.ok(cols.length > 0, 'Reservation_Date column must exist in Farmer_Daily_Reservations');
+
+    const [indices] = await db.query("SHOW INDEX FROM Farmer_Daily_Reservations WHERE Key_name = 'uq_farmer_daily_reservation'");
+    assert.ok(indices.length > 0, 'Unique constraint uq_farmer_daily_reservation must exist');
+  });
 });

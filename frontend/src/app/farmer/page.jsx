@@ -262,14 +262,46 @@ function FarmerPortalContent() {
       return;
     }
 
+    if (existingActiveBookingForDate) {
+      setErrorMessage('You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.');
+      return;
+    }
+
     if (!selectedSlotId) {
       setErrorMessage('Please click and select an available GREEN time slot from the chart.');
       return;
     }
 
     const chosenSlot = dbSlots.find(s => s.Slot_ID === selectedSlotId);
-    if (chosenSlot && Number(chosenSlot.Remaining_Capacity_Tons) <= 0) {
-      setErrorMessage('This time slot is fully booked (RED). Please choose an available GREEN slot.');
+    if (!chosenSlot) {
+      setErrorMessage('Selected slot was not found. Please choose an available GREEN slot.');
+      return;
+    }
+
+    const maxBookings = Number(chosenSlot.Max_Bookings) || 5;
+    const bookedCount = Number(chosenSlot.Booked_Count) || 0;
+    const maxCap = Number(chosenSlot.Max_Capacity_Tons) || 50.0;
+    const bookedCap = Number(chosenSlot.Booked_Capacity_Tons) || 0.0;
+    const remainingCap = Math.max(0.0, maxCap - bookedCap);
+    const reqWeight = Number(quantityTons) || 5;
+
+    if (chosenSlot.Slot_Status === 'Closed') {
+      setErrorMessage('This time slot is closed for bookings.');
+      return;
+    }
+
+    if (bookedCount >= maxBookings) {
+      setErrorMessage(`This time slot has reached its maximum farmer limit (${bookedCount}/${maxBookings} farmers). Please choose another GREEN slot.`);
+      return;
+    }
+
+    if (remainingCap <= 0) {
+      setErrorMessage('This time slot is fully booked on weight capacity (0.0T left). Please choose an available GREEN slot.');
+      return;
+    }
+
+    if (reqWeight > remainingCap) {
+      setErrorMessage(`Requested weight (${reqWeight} Tons) exceeds the remaining capacity (${remainingCap.toFixed(1)} Tons) of this slot. Please reduce commodity weight or choose another slot.`);
       return;
     }
 
@@ -340,6 +372,9 @@ function FarmerPortalContent() {
         isAvailable: true,
         isFull: false,
         isClosed: false,
+        isFarmerLimitHit: false,
+        isWeightLimitHit: false,
+        isWeightExceededForUser: false,
         remainingSpaces: 5,
         maxBookings: 5,
         bookedCount: 0,
@@ -363,17 +398,21 @@ function FarmerPortalContent() {
 
     const isClosed = dbRow.Slot_Status === 'Closed';
     const isFarmerLimitHit = bookedCount >= maxBookings;
-    const isWeightLimitHit = remainingTons <= 0 || (reqWeight > 0 && reqWeight > remainingTons);
+    const isWeightLimitHit = remainingTons <= 0;
 
+    // Slot is RED/Full ONLY when all 5 farmer spaces are taken OR all 50T capacity is exhausted
     const isFull = isFarmerLimitHit || isWeightLimitHit;
     const isAvailable = !isClosed && !isFull;
 
+    // User-specific validation: slot has available capacity, but the user's specific requested weight exceeds what remains
+    const isWeightExceededForUser = isAvailable && reqWeight > 0 && reqWeight > remainingTons;
+
     let reason = null;
     if (isClosed) reason = 'Slot Closed';
-    else if (isFarmerLimitHit && remainingTons <= 0) reason = 'Both Limits Full';
-    else if (isFarmerLimitHit) reason = 'Max Farmers (5/5)';
-    else if (remainingTons <= 0) reason = 'Weight Capacity Full';
-    else if (reqWeight > remainingTons) reason = `Exceeds Capacity (${remainingTons.toFixed(1)}T left)`;
+    else if (isFarmerLimitHit && isWeightLimitHit) reason = 'Both Limits Full';
+    else if (isFarmerLimitHit) reason = `Max Farmers (${maxBookings}/${maxBookings})`;
+    else if (isWeightLimitHit) reason = 'Weight Capacity Full (0.0T Left)';
+    else if (isWeightExceededForUser) reason = `Available (${remainingTons.toFixed(1)}T left, requested ${reqWeight.toFixed(1)}T)`;
 
     return {
       isAvailable,
@@ -381,6 +420,7 @@ function FarmerPortalContent() {
       isClosed,
       isFarmerLimitHit,
       isWeightLimitHit,
+      isWeightExceededForUser,
       remainingSpaces,
       maxBookings,
       bookedCount,
@@ -391,8 +431,17 @@ function FarmerPortalContent() {
     };
   };
 
+  // Active reservation for the currently selected date across any mandi
+  const existingActiveBookingForDate = myBookings.find(b => {
+    if (b.Booking_Status === 'Cancelled') return false;
+    const bDate = b.Slot_Date ? b.Slot_Date.split('T')[0] : '';
+    return bDate === bookingDate;
+  });
+
   const selectedSlotRecord = dbSlots.find(s => s.Slot_ID === selectedSlotId);
   const selectedConfig = TIME_SLOTS_CONFIG.find(c => c.startTime === selectedSlotRecord?.Start_Time);
+  const requestedWeightVal = parseFloat(quantityTons) || 0.5;
+  const selectedSlotStatus = selectedSlotRecord ? getSlotHybridStatus(selectedSlotRecord, requestedWeightVal) : null;
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
@@ -657,6 +706,84 @@ function FarmerPortalContent() {
               </div>
             </div>
 
+            {/* ONE BOOKING PER FARMER PER DAY NOTICE */}
+            {existingActiveBookingForDate && (
+              <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 space-y-3 animate-in fade-in">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                    <AlertCircle className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="font-display font-black text-sm text-navy-border">
+                      One Booking Per Farmer Per Day Restriction
+                    </div>
+                    <p className="text-xs text-amber-950 font-bold leading-relaxed">
+                      You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Existing Booking Card */}
+                <div className="p-3.5 bg-white rounded-xl border border-amber-200 shadow-sm">
+                  <div className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider mb-2">
+                    Your Active Reservation for {bookingDate}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Booking Token</span>
+                      <span className="font-mono font-black text-forest text-sm">
+                        {existingActiveBookingForDate.Token_Number || existingActiveBookingForDate.Gate_Pass_Token}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Mandi Yard</span>
+                      <span className="font-extrabold text-navy-border">
+                        {existingActiveBookingForDate.Mandi_Name || 'APMC Mandi'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Time Slot</span>
+                      <span className="font-extrabold text-navy-border">
+                        {existingActiveBookingForDate.Start_Time ? `${existingActiveBookingForDate.Start_Time.slice(0, 5)} - ${existingActiveBookingForDate.End_Time.slice(0, 5)}` : 'Scheduled'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Produce & Weight</span>
+                      <span className="font-extrabold text-navy-border">
+                        {existingActiveBookingForDate.Produce_Name || 'Produce'} ({existingActiveBookingForDate.Estimated_Weight_Tons}T)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-gray-500">Status:</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                        existingActiveBookingForDate.Booking_Status === 'Confirmed'
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : existingActiveBookingForDate.Booking_Status === 'Checked-In'
+                          ? 'bg-sky-100 text-sky-900 border-sky-300'
+                          : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      }`}>
+                        {existingActiveBookingForDate.Booking_Status}
+                      </span>
+                    </div>
+
+                    {existingActiveBookingForDate.Booking_Status === 'Confirmed' && (
+                      <button
+                        type="button"
+                        onClick={() => setCancelModal({ open: true, booking: existingActiveBookingForDate })}
+                        className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold text-xs transition-colors flex items-center gap-1.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Cancel Booking to Rebook</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {loadingSlots ? (
               <div className="py-12 text-center text-sm font-bold text-gray-500 flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-forest" />
@@ -680,13 +807,18 @@ function FarmerPortalContent() {
                       const reqWeight = parseFloat(quantityTons) || 0.5;
                       const status = getSlotHybridStatus(dbRow, reqWeight);
                       const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
+                      const isBlockedByDailyLimit = !!existingActiveBookingForDate;
 
                       return (
                         <button
                           key={cfg.id}
                           type="button"
-                          disabled={!status.isAvailable}
+                          disabled={!status.isAvailable || isBlockedByDailyLimit}
                           onClick={() => {
+                            if (isBlockedByDailyLimit) {
+                              setErrorMessage('You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.');
+                              return;
+                            }
                             if (dbRow && status.isAvailable) setSelectedSlotId(dbRow.Slot_ID);
                           }}
                           className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between min-h-[104px] ${
@@ -696,6 +828,8 @@ function FarmerPortalContent() {
                               ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-75'
                               : status.isFull
                               ? 'bg-rose-50 border-rose-300 text-rose-950 cursor-not-allowed opacity-90'
+                              : isBlockedByDailyLimit
+                              ? 'bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed opacity-75'
                               : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
                           }`}
                         >
@@ -709,6 +843,8 @@ function FarmerPortalContent() {
                                   ? 'bg-gray-200 text-gray-700'
                                   : status.isFull
                                   ? 'bg-rose-200 text-rose-900'
+                                  : isBlockedByDailyLimit
+                                  ? 'bg-gray-200 text-gray-600'
                                   : 'bg-emerald-200/90 text-emerald-900'
                               }`}>
                                 {status.isClosed ? 'Closed' : `${status.remainingSpaces} Spaces Left`}
@@ -733,7 +869,7 @@ function FarmerPortalContent() {
                               </span>
                             ) : status.isFull ? (
                               <span className="text-rose-800 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black truncate max-w-full" title={status.reason}>
-                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (${status.remainingTons.toFixed(1)}T Left)`}
+                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (0.0T Left)`}
                               </span>
                             ) : (
                               <span className="text-emerald-900 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
@@ -773,13 +909,18 @@ function FarmerPortalContent() {
                       const reqWeight = parseFloat(quantityTons) || 0.5;
                       const status = getSlotHybridStatus(dbRow, reqWeight);
                       const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
+                      const isBlockedByDailyLimit = !!existingActiveBookingForDate;
 
                       return (
                         <button
                           key={cfg.id}
                           type="button"
-                          disabled={!status.isAvailable}
+                          disabled={!status.isAvailable || isBlockedByDailyLimit}
                           onClick={() => {
+                            if (isBlockedByDailyLimit) {
+                              setErrorMessage('You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.');
+                              return;
+                            }
                             if (dbRow && status.isAvailable) setSelectedSlotId(dbRow.Slot_ID);
                           }}
                           className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between min-h-[104px] ${
@@ -789,6 +930,8 @@ function FarmerPortalContent() {
                               ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-75'
                               : status.isFull
                               ? 'bg-rose-50 border-rose-300 text-rose-950 cursor-not-allowed opacity-90'
+                              : isBlockedByDailyLimit
+                              ? 'bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed opacity-75'
                               : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
                           }`}
                         >
@@ -802,6 +945,8 @@ function FarmerPortalContent() {
                                   ? 'bg-gray-200 text-gray-700'
                                   : status.isFull
                                   ? 'bg-rose-200 text-rose-900'
+                                  : isBlockedByDailyLimit
+                                  ? 'bg-gray-200 text-gray-600'
                                   : 'bg-emerald-200/90 text-emerald-900'
                               }`}>
                                 {status.isClosed ? 'Closed' : `${status.remainingSpaces} Spaces Left`}
@@ -826,7 +971,7 @@ function FarmerPortalContent() {
                               </span>
                             ) : status.isFull ? (
                               <span className="text-rose-800 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black truncate max-w-full" title={status.reason}>
-                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (${status.remainingTons.toFixed(1)}T Left)`}
+                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (0.0T Left)`}
                               </span>
                             ) : (
                               <span className="text-emerald-900 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
@@ -844,51 +989,69 @@ function FarmerPortalContent() {
             )}
 
             {/* SELECTION SUMMARY & CONFIRMATION BAR */}
-            <div className="bg-mint-foam rounded-2xl border-2 border-navy-border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-              <div>
-                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
-                  Chosen Arrival Window
-                </span>
-                <div className="text-base font-display font-black text-navy-border mt-0.5">
-                  {selectedConfig ? selectedConfig.label : 'Select a slot from chart above'}
+            <div className="bg-mint-foam rounded-2xl border-2 border-navy-border p-5 space-y-3 shadow-sm">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                    Chosen Arrival Window
+                  </span>
+                  <div className="text-base font-display font-black text-navy-border mt-0.5">
+                    {selectedConfig ? selectedConfig.label : 'Select a slot from chart above'}
+                  </div>
+                  <div className="text-xs text-gray-600 font-semibold mt-0.5">
+                    Date: <span className="font-bold text-navy-border">{bookingDate}</span> • Commodity: <span className="font-bold text-navy-border">{produceList.find(p => p.Produce_ID === Number(selectedProduceId))?.Produce_Name || 'Produce'}</span> • Weight: <span className="font-bold text-navy-border">{quantityTons} Tons</span>
+                    {selectedSlotRecord && (
+                      <span className="ml-2 pl-2 border-l border-gray-300 font-bold text-emerald-800">
+                        • {Math.max(0, (selectedSlotRecord.Max_Bookings || 5) - (selectedSlotRecord.Booked_Count || 0))} spaces left • {Number(selectedSlotRecord.Remaining_Capacity_Tons !== undefined ? selectedSlotRecord.Remaining_Capacity_Tons : (50 - (selectedSlotRecord.Booked_Capacity_Tons || 0))).toFixed(1)}T free
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-600 font-semibold mt-0.5">
-                  Date: <span className="font-bold text-navy-border">{bookingDate}</span> • Commodity: <span className="font-bold text-navy-border">{produceList.find(p => p.Produce_ID === Number(selectedProduceId))?.Produce_Name || 'Produce'}</span> • Weight: <span className="font-bold text-navy-border">{quantityTons} Tons</span>
-                  {selectedSlotRecord && (
-                    <span className="ml-2 pl-2 border-l border-gray-300 font-bold text-emerald-800">
-                      • {Math.max(0, (selectedSlotRecord.Max_Bookings || 5) - (selectedSlotRecord.Booked_Count || 0))} spaces left • {Number(selectedSlotRecord.Remaining_Capacity_Tons || 50).toFixed(1)}T free
-                    </span>
-                  )}
-                </div>
+
+                {user ? (
+                  <button
+                    type="submit"
+                    disabled={submitting || !selectedSlotId || !!existingActiveBookingForDate || (selectedSlotStatus && selectedSlotStatus.isWeightExceededForUser)}
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-saffron" />
+                        <span>Booking in MySQL...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Confirm Booking & Generate Gate Pass</span>
+                        <ArrowRight className="w-4 h-4 text-saffron" />
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openLogin}
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px]"
+                  >
+                    <Lock className="w-4 h-4 text-white" />
+                    <span>Log In to Confirm Booking</span>
+                  </button>
+                )}
               </div>
 
-              {user ? (
-                <button
-                  type="submit"
-                  disabled={submitting || !selectedSlotId}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-saffron" />
-                      <span>Booking in MySQL...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Confirm Booking & Generate Gate Pass</span>
-                      <ArrowRight className="w-4 h-4 text-saffron" />
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={openLogin}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px]"
-                >
-                  <Lock className="w-4 h-4 text-white" />
-                  <span>Log In to Confirm Booking</span>
-                </button>
+              {/* Warning if requested weight exceeds remaining capacity of selected slot */}
+              {selectedSlotStatus && selectedSlotStatus.isWeightExceededForUser && (
+                <div className="p-3 bg-rose-50 text-rose-900 border border-rose-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Insufficient Capacity: You requested {requestedWeightVal} Tons, but this slot has only {selectedSlotStatus.remainingTons.toFixed(1)} Tons free. Please reduce weight in Step 1 or select another GREEN slot.</span>
+                </div>
+              )}
+
+              {/* Notice if farmer already booked on this date */}
+              {existingActiveBookingForDate && (
+                <div className="p-3 bg-amber-100 text-amber-950 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>One Booking Per Day: You already have an active booking on {bookingDate}. You can book another slot after cancelling your existing upcoming booking.</span>
+                </div>
               )}
             </div>
 

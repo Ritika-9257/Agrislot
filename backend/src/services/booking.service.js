@@ -79,13 +79,16 @@ const BookingService = {
     try {
       await connection.beginTransaction();
 
-      // 3. Acquire row-level exclusive lock on the slot (SELECT ... FOR UPDATE)
+      // 3. STEP A: Lock farmer account profile row (SELECT ... FOR UPDATE) to serialize booking attempts from the same farmer
+      await connection.query('SELECT Farmer_ID FROM Farmers WHERE Farmer_ID = ? FOR UPDATE', [resolvedFarmerId]);
+
+      // 4. STEP B: Acquire row-level exclusive lock on the requested slot (SELECT ... FOR UPDATE)
       const slot = await SlotRepository.findByIdForUpdate(Slot_ID, connection);
       if (!slot) {
         throw new AppError(`Slot with ID ${Slot_ID} does not exist`, 404, 'SLOT_NOT_FOUND');
       }
 
-      // 4. Validate slot status and date
+      // 5. STEP C: Validate slot status and date
       if (slot.Slot_Status === 'Closed') {
         throw new AppError('This time-slot has been administratively closed for bookings', 400, 'SLOT_CLOSED');
       }
@@ -99,8 +102,24 @@ const BookingService = {
         throw new AppError(`Cannot book slot for past date (${slotDateStr})`, 400, 'PAST_DATE_NOT_BOOKABLE');
       }
 
-      // 5. Hybrid Capacity & Concurrency Checks (Both limits must pass)
-      // Check 5A: Maximum Farmer Limit
+      // 6. STEP D: ENFORCE "ONE BOOKING PER FARMER PER DAY" RULE
+      // Check whether the authenticated farmer already has a non-cancelled booking on this calendar date across all mandis
+      const existingDailyBooking = await BookingRepository.findActiveBookingByFarmerAndDate(
+        resolvedFarmerId,
+        slotDateStr,
+        connection
+      );
+
+      if (existingDailyBooking) {
+        throw new AppError(
+          `You already have a booking for this date (${slotDateStr}) at ${existingDailyBooking.Mandi_Name} (Token: ${existingDailyBooking.Token_Number}, Status: ${existingDailyBooking.Booking_Status}). You can book another slot after cancelling your existing upcoming booking.`,
+          409,
+          'ONE_BOOKING_PER_DAY_LIMIT_REACHED'
+        );
+      }
+
+      // 7. STEP E: Hybrid Capacity & Concurrency Checks (Both limits must pass)
+      // Check 7A: Maximum Farmer Limit
       const maxBookings = parseInt(slot.Max_Bookings, 10) || 5;
       const bookedCount = parseInt(slot.Booked_Count, 10) || 0;
       if (bookedCount >= maxBookings) {
@@ -111,7 +130,7 @@ const BookingService = {
         );
       }
 
-      // Check 5B: Maximum Total Weight Capacity
+      // Check 7B: Maximum Total Weight Capacity
       const maxCapacity = parseFloat(slot.Max_Capacity_Tons);
       const bookedCapacity = parseFloat(slot.Booked_Capacity_Tons);
       const remainingCapacity = Math.max(0, maxCapacity - bookedCapacity);
@@ -124,7 +143,7 @@ const BookingService = {
         );
       }
 
-      // 6. Generate collision-resistant digital gate-pass token with retry mechanism
+      // 8. STEP F: Generate collision-resistant digital gate-pass token with retry mechanism
       let tokenNumber = null;
       let bookingId = null;
       let attempts = 0;
@@ -154,10 +173,29 @@ const BookingService = {
         throw new AppError('Unable to generate unique gate pass token after several attempts', 500, 'TOKEN_GENERATION_FAILED');
       }
 
-      // 7. Atomically increment slot booked count and booked capacity
+      // 9. STEP G: Insert into Farmer_Daily_Reservations (enforces database-level uniqueness)
+      try {
+        await BookingRepository.createDailyReservation(
+          resolvedFarmerId,
+          slotDateStr,
+          bookingId,
+          connection
+        );
+      } catch (resErr) {
+        if (resErr.code === 'ER_DUP_ENTRY') {
+          throw new AppError(
+            `You already have a booking for date ${slotDateStr}. One booking per farmer per day is enforced.`,
+            409,
+            'ONE_BOOKING_PER_DAY_LIMIT_REACHED'
+          );
+        }
+        throw resErr;
+      }
+
+      // 10. STEP H: Atomically increment slot booked count and booked capacity
       await SlotRepository.incrementSlotBooking(Slot_ID, requestedWeight, connection);
 
-      // 8. Commit atomic transaction
+      // 11. STEP I: Commit atomic transaction
       await connection.commit();
 
       logger.info(`Booking created successfully: ID=${bookingId}, Token=${tokenNumber}, Weight=${requestedWeight}T`);
@@ -239,11 +277,14 @@ const BookingService = {
       // 1. Update status to Cancelled
       await BookingRepository.updateStatus(bookingId, 'Cancelled', connection);
 
-      // 2. Decrement slot farmer count and weight capacity atomically
+      // 2. Remove from Farmer_Daily_Reservations to permit the farmer to rebook on this date
+      await BookingRepository.deleteDailyReservation(bookingId, connection);
+
+      // 3. Decrement slot farmer count and weight capacity atomically
       const weightToRelease = parseFloat(booking.Estimated_Weight_Tons);
       await SlotRepository.decrementSlotBooking(booking.Slot_ID, weightToRelease, connection);
 
-      // 3. Commit
+      // 4. Commit
       await connection.commit();
 
       logger.info(`Booking ${bookingId} cancelled. Released ${weightToRelease}T back to Slot ${booking.Slot_ID}`);

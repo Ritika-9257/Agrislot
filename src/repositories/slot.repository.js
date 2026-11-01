@@ -165,13 +165,13 @@ const SlotRepository = {
     const sql = `
       UPDATE Slots
       SET 
-        Booked_Count = Booked_Count + 1,
-        Booked_Capacity_Tons = Booked_Capacity_Tons + ?,
         Slot_Status = CASE 
           WHEN Slot_Status = 'Closed' THEN 'Closed'
           WHEN (Booked_Count + 1) >= Max_Bookings OR (Booked_Capacity_Tons + ?) >= Max_Capacity_Tons THEN 'Full'
           ELSE 'Available'
-        END
+        END,
+        Booked_Count = Booked_Count + 1,
+        Booked_Capacity_Tons = Booked_Capacity_Tons + ?
       WHERE Slot_ID = ?
     `;
     const [result] = await connection.query(sql, [weightTons, weightTons, slotId]);
@@ -185,13 +185,13 @@ const SlotRepository = {
     const sql = `
       UPDATE Slots
       SET 
-        Booked_Count = GREATEST(0, Booked_Count - 1),
-        Booked_Capacity_Tons = GREATEST(0.00, Booked_Capacity_Tons - ?),
         Slot_Status = CASE 
           WHEN Slot_Status = 'Closed' THEN 'Closed'
           WHEN GREATEST(0, Booked_Count - 1) >= Max_Bookings OR GREATEST(0.00, Booked_Capacity_Tons - ?) >= Max_Capacity_Tons THEN 'Full'
           ELSE 'Available'
-        END
+        END,
+        Booked_Count = GREATEST(0, Booked_Count - 1),
+        Booked_Capacity_Tons = GREATEST(0.00, Booked_Capacity_Tons - ?)
       WHERE Slot_ID = ?
     `;
     const [result] = await connection.query(sql, [weightTons, weightTons, slotId]);
