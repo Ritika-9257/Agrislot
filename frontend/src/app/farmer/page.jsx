@@ -26,7 +26,13 @@ import {
   CalendarDays,
   X
 } from 'lucide-react';
-import { AgriSlotAPI } from '@/lib/api';
+import { 
+  AgriSlotAPI, 
+  getTodayISTString, 
+  getTomorrowISTString, 
+  getOffsetISTString, 
+  formatToISTDateString 
+} from '@/lib/api';
 import GatePassModal from '@/components/GatePassModal';
 import { useAuth } from '@/context/AuthContext';
 
@@ -81,9 +87,11 @@ function FarmerPortalContent() {
   const [selectedProduceId, setSelectedProduceId] = useState('');
   const [quantityTons, setQuantityTons] = useState(5);
 
-  // Booking Date Selection
-  const todayStr = new Date().toISOString().split('T')[0];
-  const [bookingDate, setBookingDate] = useState(todayStr);
+  // Booking Date Selection (Strict Next-Day Advance Policy in Asia/Kolkata IST)
+  const [currentISTDate, setCurrentISTDate] = useState(() => getTodayISTString());
+  const [minBookingDate, setMinBookingDate] = useState(() => getTomorrowISTString());
+  const [bookingDate, setBookingDate] = useState(() => getTomorrowISTString());
+  const [dateValidationError, setDateValidationError] = useState('');
 
   // Live Slots from MySQL for (Mandi_ID, Slot_Date)
   const [dbSlots, setDbSlots] = useState([]);
@@ -148,6 +156,14 @@ function FarmerPortalContent() {
   // Fetch Slots whenever selected Mandi or Booking Date changes
   useEffect(() => {
     if (!selectedMandiId || !bookingDate) return;
+
+    // Do not query or display slots for today or past dates
+    const tomorrow = getTomorrowISTString();
+    if (bookingDate < tomorrow) {
+      setDbSlots([]);
+      setSelectedSlotId(null);
+      return;
+    }
 
     async function loadSlots() {
       setLoadingSlots(true);
@@ -221,12 +237,59 @@ function FarmerPortalContent() {
     }
   }, [user?.userId, user?.farmerId]);
 
-  // Quick Date Select Helper
+  // Live IST midnight transition sync: ensures booking eligibility updates automatically at midnight
+  useEffect(() => {
+    const checkMidnightSync = () => {
+      const liveToday = getTodayISTString();
+      const liveTomorrow = getTomorrowISTString();
+
+      setCurrentISTDate(prevToday => {
+        if (prevToday !== liveToday) {
+          setMinBookingDate(liveTomorrow);
+          setBookingDate(prevDate => {
+            if (prevDate < liveTomorrow) {
+              return liveTomorrow;
+            }
+            return prevDate;
+          });
+          return liveToday;
+        }
+        return prevToday;
+      });
+    };
+
+    const interval = setInterval(checkMidnightSync, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Handle Date Change with Strict Validation
+  const handleDateChange = (newDateStr) => {
+    const formatted = formatToISTDateString(newDateStr);
+    const today = getTodayISTString();
+    const tomorrow = getTomorrowISTString();
+
+    if (formatted < tomorrow) {
+      if (formatted === today) {
+        setDateValidationError('Advance Booking Only: Same-day booking is not permitted. Please select tomorrow or a future date.');
+      } else {
+        setDateValidationError(`Advance Booking Only: Selected date (${formatted}) is in the past. Earliest bookable date is ${tomorrow}.`);
+      }
+      setBookingDate(formatted);
+      setSelectedSlotId(null);
+      setDbSlots([]);
+      return;
+    }
+
+    setDateValidationError('');
+    setBookingDate(formatted);
+    setSelectedSlotId(null);
+  };
+
+  // Quick Date Select Helper (Strict Advance Booking: offsetDays must be >= 1)
   const setQuickDate = (offsetDays) => {
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    const dateStr = d.toISOString().split('T')[0];
-    setBookingDate(dateStr);
+    const safeOffset = Math.max(1, offsetDays);
+    const dateStr = getOffsetISTString(safeOffset);
+    handleDateChange(dateStr);
   };
 
   // Handle Booking Cancellation (Capacity restoration in MySQL)
@@ -257,6 +320,18 @@ function FarmerPortalContent() {
   const handleBookSlot = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+
+    // Advance Booking Policy Check
+    const today = getTodayISTString();
+    const tomorrow = getTomorrowISTString();
+    if (bookingDate < tomorrow) {
+      if (bookingDate === today) {
+        setErrorMessage('Same-day booking is not permitted. Please select tomorrow or a future date.');
+      } else {
+        setErrorMessage(`Cannot book slot for past date (${bookingDate}). Earliest eligible arrival date is ${tomorrow}.`);
+      }
+      return;
+    }
 
     if (!user) {
       setErrorMessage('Farmer account required: Please sign in to verify your identity and confirm your arrival slot.');
@@ -648,54 +723,85 @@ function FarmerPortalContent() {
               </div>
             </div>
 
-            {/* DEDICATED DATE SELECTION SECTION */}
+            {/* DEDICATED DATE SELECTION SECTION (Advance Booking Policy in Asia/Kolkata IST) */}
             <div className="bg-mint-foam/50 border-2 border-emerald-200 rounded-2xl p-4 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <label className="text-xs font-black text-forest uppercase tracking-wider flex items-center gap-1.5">
-                  <CalendarDays className="w-4 h-4 text-emerald-700" /> Select Arrival Date (Choose date to reload slot chart)
+                  <CalendarDays className="w-4 h-4 text-emerald-700" /> Select Arrival Date (Advance Booking Only)
                 </label>
                 
-                {/* Quick Date Buttons */}
+                {/* Quick Date Buttons (Strictly Advance: Tomorrow, +2 Days, +3 Days) */}
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setQuickDate(0)}
+                    onClick={() => setQuickDate(1)}
                     className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
-                      bookingDate === todayStr 
+                      bookingDate === minBookingDate 
                         ? 'bg-forest text-white border-navy-border shadow-sm' 
                         : 'bg-white text-gray-700 border-gray-300 hover:border-navy-border'
                     }`}
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setQuickDate(1)}
-                    className="px-3 py-1 rounded-lg text-xs font-bold bg-white text-gray-700 border border-gray-300 hover:border-navy-border transition-all"
                   >
                     Tomorrow
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuickDate(2)}
-                    className="px-3 py-1 rounded-lg text-xs font-bold bg-white text-gray-700 border border-gray-300 hover:border-navy-border transition-all"
+                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                      bookingDate === getOffsetISTString(2)
+                        ? 'bg-forest text-white border-navy-border shadow-sm'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-navy-border'
+                    }`}
                   >
                     +2 Days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickDate(3)}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold border transition-all ${
+                      bookingDate === getOffsetISTString(3)
+                        ? 'bg-forest text-white border-navy-border shadow-sm'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-navy-border'
+                    }`}
+                  >
+                    +3 Days
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              {/* Informative Advance Booking Policy Message */}
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold">
+                <span className="text-amber-600 text-sm">📅</span>
+                <span>Advance Booking Only: Slots must be reserved at least one day before arrival.</span>
+              </div>
+
+              {/* Validation Message if User Tries to Select Today or Past Date */}
+              {dateValidationError && (
+                <div className="p-3 bg-rose-50 border-2 border-rose-400 rounded-xl text-rose-800 text-xs font-black flex items-center gap-2 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{dateValidationError}</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
                 <input
                   type="date"
-                  min={todayStr}
+                  min={minBookingDate}
                   value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
-                  className="bg-white border-2 border-navy-border rounded-xl px-4 py-2 text-sm font-extrabold text-navy-border shadow-sm focus:outline-none focus:ring-2 focus:ring-forest cursor-pointer"
+                  onChange={(e) => handleDateChange(e.target.value)}
+                  className={`bg-white border-2 rounded-xl px-4 py-2 text-sm font-extrabold shadow-sm focus:outline-none focus:ring-2 focus:ring-forest cursor-pointer ${
+                    bookingDate < minBookingDate
+                      ? 'border-rose-500 text-rose-700 bg-rose-50/50'
+                      : 'border-navy-border text-navy-border'
+                  }`}
                 />
                 <span className="text-xs font-semibold text-gray-600">
                   Showing slots for: <span className="font-bold text-forest">{bookingDate}</span>
                 </span>
+                {bookingDate === minBookingDate && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-mono font-bold">
+                    Earliest Eligible Arrival (Tomorrow)
+                  </span>
+                )}
               </div>
             </div>
 
@@ -814,7 +920,28 @@ function FarmerPortalContent() {
               </div>
             )}
 
-            {loadingSlots ? (
+            {/* Advance Booking Policy: Do not display slots for today or past dates */}
+            {bookingDate < minBookingDate ? (
+              <div className="text-center py-12 px-4 border-2 border-dashed border-amber-300 rounded-2xl bg-amber-50/60 space-y-3 animate-in fade-in">
+                <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto font-bold text-xl border border-amber-300">
+                  ⚠️
+                </div>
+                <h3 className="font-display font-black text-navy-border text-base">
+                  Same-Day Arrival Booking Is Not Available
+                </h3>
+                <p className="text-xs text-slate-700 max-w-md mx-auto leading-relaxed font-medium">
+                  Under the APMC Mandi Advance Booking Policy, arrival slots must be reserved at least one day before arrival. Same-day bookings cannot be admitted.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setQuickDate(1)}
+                  className="px-4 py-2.5 rounded-xl bg-forest hover:bg-forest-light text-white text-xs font-display font-black uppercase tracking-wider border-2 border-navy-border shadow-bento-sm active:translate-y-0.5 transition-all inline-flex items-center gap-2"
+                >
+                  <Calendar className="w-3.5 h-3.5 text-saffron" />
+                  <span>Switch to Tomorrow ({minBookingDate})</span>
+                </button>
+              </div>
+            ) : loadingSlots ? (
               <div className="py-12 text-center text-sm font-bold text-gray-500 flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-forest" />
                 Querying slot capacity from MySQL...
@@ -1041,7 +1168,7 @@ function FarmerPortalContent() {
                 {user ? (
                   <button
                     type="submit"
-                    disabled={submitting || !selectedSlotId || !!existingActiveBookingForDate || (selectedSlotStatus && selectedSlotStatus.isWeightExceededForUser)}
+                    disabled={submitting || !selectedSlotId || !!existingActiveBookingForDate || (selectedSlotStatus && selectedSlotStatus.isWeightExceededForUser) || bookingDate < minBookingDate}
                     className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {submitting ? (
@@ -1081,6 +1208,14 @@ function FarmerPortalContent() {
                 <div className="p-3 bg-amber-100 text-amber-950 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
                   <span>One Booking Per Day: You already have an active booking on {bookingDate}. You can book another slot after cancelling your existing upcoming booking.</span>
+                </div>
+              )}
+
+              {/* Notice if same-day or past date selected */}
+              {bookingDate < minBookingDate && (
+                <div className="p-3 bg-rose-50 text-rose-900 border border-rose-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Advance Booking Only: Same-day booking is not permitted. Please select tomorrow or a future date to confirm a booking.</span>
                 </div>
               )}
             </div>
