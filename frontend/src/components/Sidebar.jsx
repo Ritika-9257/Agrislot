@@ -55,7 +55,6 @@ function SidebarContent() {
       { href: '/admin?tab=confirmed', label: 'Expected Arrivals', icon: CalendarCheck, badge: 'EXPECTED' },
       { href: '/admin?tab=bookings', label: 'All Booking History', icon: CalendarCheck, badge: 'HISTORY' },
       { href: '/admin?tab=completed', label: 'Completed Deliveries', icon: CheckCircle2, badge: 'DONE' },
-      { href: '/admin?tab=no-show', label: 'No-Show Records', icon: AlertCircle, badge: 'ABSENT' },
       { href: '/admin?tab=users', label: 'Manage Roles (RBAC)', icon: Users, badge: 'ACCESS' },
       { href: '/admin?tab=analysis', label: 'Database & Reports', icon: BarChart3, badge: 'DBMS' },
       { href: '/admin?tab=slots', label: 'Slot Capacity Manager', icon: Layers },
@@ -68,7 +67,6 @@ function SidebarContent() {
       { href: '/admin?tab=active', label: 'Active In-Yard', icon: Tractor, badge: 'IN-YARD' },
       { href: '/admin?tab=confirmed', label: 'Expected Arrivals', icon: CalendarCheck, badge: 'EXPECTED' },
       { href: '/admin?tab=completed', label: 'Completed Deliveries', icon: CheckCircle2, badge: 'DONE' },
-      { href: '/admin?tab=no-show', label: 'No-Show Records', icon: AlertCircle, badge: 'ABSENT' },
       { href: '/admin?tab=bookings', label: 'All Booking History', icon: CalendarCheck },
       { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
@@ -105,9 +103,6 @@ function SidebarContent() {
       }
       if (linkTab === 'verify') {
         return currentTab === 'verify' || currentTab === 'gate';
-      }
-      if (linkTab === 'no-show') {
-        return currentTab === 'no-show' || currentTab === 'noshow';
       }
       return currentTab === linkTab;
     }

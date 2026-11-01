@@ -50,7 +50,7 @@ function AdminPortalContent() {
     if (tab === 'confirmed') return 'confirmed';
     if (tab === 'completed') return 'completed';
     if (tab === 'cancelled') return 'cancelled';
-    if (tab === 'no-show' || tab === 'noshow') return 'no-show';
+    if (tab === 'no-show' || tab === 'noshow') return isOfficer ? 'verify' : 'overview';
     if (tab === 'slots') return isOfficer ? 'verify' : 'slots';
     if (tab === 'farmers') return isOfficer ? 'verify' : 'farmers';
     if (tab === 'analysis' || tab === 'dbms') return isOfficer ? 'verify' : 'analysis';
@@ -60,7 +60,7 @@ function AdminPortalContent() {
   };
 
   // Active Main Tab:
-  // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'no-show' | 'slots' | 'farmers' | 'analysis' | 'access'
+  // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'slots' | 'farmers' | 'analysis' | 'access'
   const [activeTab, setActiveTab] = useState(() => getTabFromParam(tabParam));
 
   // Sync activeTab whenever URL query changes (e.g. sidebar navigation)
@@ -511,36 +511,6 @@ function AdminPortalContent() {
     }
   };
 
-  // Mark as No-Show
-  const handleMarkNoShow = async (booking) => {
-    if (!booking) return;
-    const targetToken = booking.Token_Number || booking.Gate_Pass_Token;
-    const officerName = authUser?.name || authUser?.username || 'Mandi Officer';
-    try {
-      await AgriSlotAPI.updateBookingStatus(booking.Booking_ID, 'No-Show', activeAuthToken);
-
-      setAllBookings(prev =>
-        prev.map(b => (b.Booking_ID === booking.Booking_ID ? { 
-          ...b, 
-          Booking_Status: 'No-Show',
-          Officer_Name: officerName
-        } : b))
-      );
-
-      if (searchedBooking && searchedBooking.Booking_ID === booking.Booking_ID) {
-        setSearchedBooking(prev => ({ 
-          ...prev, 
-          Booking_Status: 'No-Show',
-          Officer_Name: officerName
-        }));
-      }
-
-      setActionSuccessMessage(`⚠️ Token ${targetToken} marked as No-Show. Slot capacity remains allocated for past arrival window.`);
-      if (typeof window !== 'undefined') window.dispatchEvent(new Event('agrislot_refresh_notifications'));
-    } catch (err) {
-      setActionSuccessMessage(`⚠️ Token ${targetToken} marked as No-Show.`);
-    }
-  };
 
   // Load Users List
   const loadUsers = async () => {
@@ -631,7 +601,6 @@ function AdminPortalContent() {
   const upcomingBookings = allBookings.filter(b => b.Booking_Status === 'Confirmed');
   const completedBookings = allBookings.filter(b => b.Booking_Status === 'Completed');
   const cancelledBookings = allBookings.filter(b => b.Booking_Status === 'Cancelled');
-  const noShowBookings = allBookings.filter(b => b.Booking_Status === 'No-Show');
   const totalCompletedTonnage = completedBookings.reduce((sum, b) => sum + (parseFloat(b.Estimated_Weight_Tons) || 0), 0).toFixed(1);
 
   // Overview Date-Filtered Counts
@@ -766,16 +735,6 @@ function AdminPortalContent() {
             }`}
           >
             ✓ Completed ({completedBookings.length})
-          </button>
-          <button
-            onClick={() => handleTabChange('no-show')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
-              activeTab === 'no-show'
-                ? 'bg-stone-700 text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
-            }`}
-          >
-            ⚠️ No-Show ({noShowBookings.length})
           </button>
           <button
             onClick={() => handleTabChange('cancelled')}
@@ -918,12 +877,6 @@ function AdminPortalContent() {
                 {overviewBookings.filter(b => b.Booking_Status === 'Completed').length}
               </div>
               <div className="text-[11px] font-bold text-gray-500 uppercase mt-1">Completed Deliveries</div>
-            </div>
-            <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm">
-              <div className="text-3xl font-black text-stone-700">
-                {overviewBookings.filter(b => b.Booking_Status === 'No-Show').length}
-              </div>
-              <div className="text-[11px] font-bold text-gray-500 uppercase mt-1">No-Show Bookings</div>
             </div>
             <div className="bg-white rounded-2xl border-2 border-navy-border p-4 text-center shadow-sm">
               <div className="text-3xl font-black text-rose-700">
@@ -1164,24 +1117,14 @@ function AdminPortalContent() {
 
               <div className="pt-2 flex flex-wrap items-center gap-3">
                 {searchedBooking.Booking_Status === 'Confirmed' && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleAllowEntry(searchedBooking)}
-                      className="px-6 py-3 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 active:translate-x-[2px] active:translate-y-[2px]"
-                    >
-                      <CheckCircle2 className="w-4 h-4 text-saffron" />
-                      <span>Allow Entry / Check In</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleMarkNoShow(searchedBooking)}
-                      className="px-5 py-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-display font-bold text-sm border-2 border-stone-300 flex items-center justify-center gap-2"
-                    >
-                      <AlertCircle className="w-4 h-4 text-stone-600" />
-                      <span>Mark as No-Show</span>
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => handleAllowEntry(searchedBooking)}
+                    className="px-6 py-3 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 active:translate-x-[2px] active:translate-y-[2px]"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-saffron" />
+                    <span>Allow Entry / Check In</span>
+                  </button>
                 )}
                 {searchedBooking.Booking_Status === 'Checked-In' && (
                   <>
@@ -1217,12 +1160,6 @@ function AdminPortalContent() {
                   <div className="p-3 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-700 flex-shrink-0" />
                     <span>✓ Produce visit completed and permanently retained in MySQL database archive.</span>
-                  </div>
-                )}
-                {searchedBooking.Booking_Status === 'No-Show' && (
-                  <div className="p-3 bg-stone-100 text-stone-800 border border-stone-300 rounded-xl text-xs font-bold flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-stone-600 flex-shrink-0" />
-                    <span>⚠️ Farmer did not arrive during the scheduled window. Marked as No-Show.</span>
                   </div>
                 )}
                 {searchedBooking.Booking_Status === 'Cancelled' && (
@@ -1376,21 +1313,13 @@ function AdminPortalContent() {
                       </td>
                       <td className="py-3 px-3">{b.Produce_Name || 'Wheat'} ({b.Estimated_Weight_Tons}T)</td>
                       <td className="py-3 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end">
                           <button
                             type="button"
                             onClick={() => handleAllowEntry(b)}
                             className="px-3 py-1.5 rounded-lg bg-forest hover:bg-forest-light text-white font-bold text-xs border border-navy-border shadow-sm"
                           >
                             Allow Entry
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMarkNoShow(b)}
-                            className="px-2.5 py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs border border-stone-300"
-                            title="Mark as No-Show if arrival window expired"
-                          >
-                            No-Show
                           </button>
                         </div>
                       </td>
@@ -1439,7 +1368,6 @@ function AdminPortalContent() {
                 <option value="Checked-In">Checked-In</option>
                 <option value="In Process">In Process</option>
                 <option value="Completed">Completed</option>
-                <option value="No-Show">No-Show</option>
                 <option value="Cancelled">Cancelled</option>
               </select>
 
@@ -1569,22 +1497,13 @@ function AdminPortalContent() {
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           {b.Booking_Status === 'Confirmed' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleAllowEntry(b)}
-                                className="px-2.5 py-1 bg-forest hover:bg-forest-light text-white rounded text-[11px] font-bold shadow-sm"
-                              >
-                                Allow Entry
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleMarkNoShow(b)}
-                                className="px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded text-[11px] font-bold border border-stone-300"
-                              >
-                                No-Show
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={() => handleAllowEntry(b)}
+                              className="px-2.5 py-1 bg-forest hover:bg-forest-light text-white rounded text-[11px] font-bold shadow-sm"
+                            >
+                              Allow Entry
+                            </button>
                           )}
                           {b.Booking_Status === 'Checked-In' && (
                             <>
@@ -1694,79 +1613,6 @@ function AdminPortalContent() {
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* SECTION H: NO-SHOW BOOKINGS                                               */}
-      {/* ========================================================================= */}
-      {activeTab === 'no-show' && (
-        <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b-2 border-gray-100 pb-3">
-            <div>
-              <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">Unfulfilled Reservations</span>
-              <h2 className="text-lg font-display font-black text-navy-border">
-                No-Show Farmer Bookings ({noShowBookings.length})
-              </h2>
-            </div>
-            <span className="text-xs text-gray-500 font-bold">
-              Farmers who did not arrive within permitted arrival window
-            </span>
-          </div>
-
-          <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 leading-relaxed font-semibold">
-            ⚠️ <strong>DBMS Slot Rule:</strong> Capacity is retained for expired slots to prevent retroactive slot re-booking and maintain capacity audit integrity.
-          </div>
-
-          {noShowBookings.length === 0 ? (
-            <div className="py-12 text-center text-sm font-bold text-gray-500 border-2 border-dashed border-gray-200 rounded-xl">
-              No bookings currently recorded as No-Show.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b-2 border-gray-200 text-gray-400 font-mono uppercase text-[10px]">
-                    <th className="py-2.5 px-3">Token</th>
-                    <th className="py-2.5 px-3">Farmer & ID</th>
-                    <th className="py-2.5 px-3">Mandi Yard</th>
-                    <th className="py-2.5 px-3">Produce & Weight</th>
-                    <th className="py-2.5 px-3">Scheduled Date & Slot</th>
-                    <th className="py-2.5 px-3">Recorded By Officer</th>
-                    <th className="py-2.5 px-3 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
-                  {noShowBookings.map((b) => (
-                    <tr key={b.Booking_ID} className="hover:bg-stone-50/50">
-                      <td className="py-3 px-3 font-mono font-black text-forest">
-                        {b.Token_Number || b.Gate_Pass_Token}
-                      </td>
-                      <td className="py-3 px-3">
-                        <div className="font-extrabold">{b.Farmer_Name || 'Farmer'}</div>
-                        <div className="text-[10px] text-gray-400">ID: #{b.Farmer_ID} • {b.Phone || b.Farmer_Phone || ''}</div>
-                      </td>
-                      <td className="py-3 px-3 font-bold text-gray-700">{b.Mandi_Name || 'APMC Surat'}</td>
-                      <td className="py-3 px-3">{b.Produce_Name || 'Wheat'} ({b.Estimated_Weight_Tons}T)</td>
-                      <td className="py-3 px-3">
-                        <div>{b.Slot_Date ? b.Slot_Date.split('T')[0] : 'Today'}</div>
-                        <div className="text-[10px] text-gray-400">
-                          {b.Start_Time ? `${b.Start_Time.slice(0, 5)} - ${b.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 text-gray-600 font-medium">
-                        {b.Officer_Name ? `Officer ${b.Officer_Name}` : 'Gate Desk'}
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <span className="px-2.5 py-1 rounded bg-stone-100 text-stone-800 font-black text-[10px] border border-stone-300 uppercase">
-                          ⚠️ No-Show
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* SECTION G: CANCELLED BOOKINGS                                             */}

@@ -904,14 +904,14 @@ function FarmerPortalContent() {
         const upcomingCount = myBookings.filter(b => b.Booking_Status === 'Confirmed').length;
         const activeCount = myBookings.filter(b => b.Booking_Status === 'Checked-In' || b.Booking_Status === 'In Process').length;
         const completedCount = myBookings.filter(b => b.Booking_Status === 'Completed').length;
-        const cancelledCount = myBookings.filter(b => b.Booking_Status === 'Cancelled' || b.Booking_Status === 'No-Show').length;
+        const cancelledCount = myBookings.filter(b => b.Booking_Status === 'Cancelled').length;
 
         const displayedHistoryBookings = myBookings.filter(b => {
           const status = b.Booking_Status || 'Confirmed';
           if (historyCategory === 'UPCOMING' && status !== 'Confirmed') return false;
           if (historyCategory === 'ACTIVE' && status !== 'Checked-In' && status !== 'In Process') return false;
           if (historyCategory === 'COMPLETED' && status !== 'Completed') return false;
-          if (historyCategory === 'CANCELLED' && status !== 'Cancelled' && status !== 'No-Show') return false;
+          if (historyCategory === 'CANCELLED' && status !== 'Cancelled') return false;
 
           if (searchFilter) {
             const q = searchFilter.toLowerCase();
@@ -1005,7 +1005,7 @@ function FarmerPortalContent() {
                       : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
                   }`}
                 >
-                  ✕ Cancelled / No-Show ({cancelledCount})
+                  ✕ Cancelled ({cancelledCount})
                 </button>
               </div>
 
@@ -1075,11 +1075,9 @@ function FarmerPortalContent() {
                                 ? 'bg-indigo-100 text-indigo-900 border-indigo-300'
                                 : status === 'Completed'
                                 ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                : status === 'No-Show'
-                                ? 'bg-stone-100 text-stone-800 border-stone-300'
                                 : 'bg-rose-100 text-rose-900 border-rose-300'
                             }`}>
-                              {status === 'Checked-In' ? 'Checked-In (Gate)' : status === 'In Process' ? 'In Process (Yard)' : status === 'No-Show' ? '⚠️ No-Show' : status}
+                              {status === 'Checked-In' ? 'Checked-In (Gate)' : status === 'In Process' ? 'In Process (Yard)' : status}
                             </span>
                           </div>
 

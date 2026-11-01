@@ -71,8 +71,8 @@ router.patch('/:id/read', async (req, res, next) => {
 // PATCH /api/v1/notifications/read-all
 router.patch('/read-all', async (req, res, next) => {
   try {
-    let farmerId = req.body?.farmerId ? parseInt(req.body.farmerId, 10) : null;
-    let userId = req.body?.userId ? parseInt(req.body.userId, 10) : null;
+    let farmerId = (req.body?.farmerId || req.query?.farmerId) ? parseInt(req.body?.farmerId || req.query?.farmerId, 10) : null;
+    let userId = (req.body?.userId || req.query?.userId) ? parseInt(req.body?.userId || req.query?.userId, 10) : null;
 
     if (req.user) {
       userId = req.user.userId;

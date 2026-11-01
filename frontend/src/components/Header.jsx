@@ -75,11 +75,15 @@ export default function Header({ title }) {
     try {
       setNotifications(prev => prev.map(n => ({ ...n, Is_Read: 1 })));
       setUnreadCount(0);
-      await AgriSlotAPI.markAllNotificationsRead({
-        farmerId: user?.farmerId,
-        userId: user?.userId
-      });
-    } catch {
+      await AgriSlotAPI.markAllNotificationsRead(
+        {
+          farmerId: user?.farmerId,
+          userId: user?.userId
+        },
+        user?.token
+      );
+    } catch (err) {
+      console.error('Failed to mark all notifications read:', err);
       setNotifications(prev => prev.map(n => ({ ...n, Is_Read: 1 })));
       setUnreadCount(0);
     }
@@ -87,10 +91,11 @@ export default function Header({ title }) {
 
   const handleMarkSingleRead = async (id) => {
     try {
-      await AgriSlotAPI.markNotificationRead(id);
       setNotifications(prev => prev.map(n => n.Notification_ID === id ? { ...n, Is_Read: 1 } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch {
+      await AgriSlotAPI.markNotificationRead(id, user?.token);
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
       setNotifications(prev => prev.map(n => n.Notification_ID === id ? { ...n, Is_Read: 1 } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
     }

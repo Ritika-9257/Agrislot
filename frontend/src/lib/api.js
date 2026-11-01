@@ -146,8 +146,13 @@ export async function apiRequest(endpoint, options = {}) {
     ...(options.headers || {}),
   };
 
+  let body = options.body;
+  if (body !== undefined && body !== null && typeof body === 'object' && !(body instanceof FormData) && !(typeof body === 'string')) {
+    body = JSON.stringify(body);
+  }
+
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers, body });
     const data = await response.json();
 
     if (!response.ok && !data.success) {
@@ -375,10 +380,20 @@ export const AgriSlotAPI = {
     const qs = q.toString();
     return apiRequest(`/notifications${qs ? `?${qs}` : ''}`);
   },
-  markNotificationRead: (id) =>
-    apiRequest(`/notifications/${id}/read`, { method: 'PATCH' }),
-  markAllNotificationsRead: (payload = {}) =>
-    apiRequest('/notifications/read-all', { method: 'PATCH', body: payload }),
+  markNotificationRead: (id, token = null) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/notifications/${id}/read`, { method: 'PATCH', headers });
+  },
+  markAllNotificationsRead: (payload = {}, token = null) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest('/notifications/read-all', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
+  },
 
   // CSV Report Exports (Safe RFC 4180)
   getExportCsvUrl: (type, params) => {

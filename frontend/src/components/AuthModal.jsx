@@ -30,8 +30,8 @@ export default function AuthModal() {
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
 
   // Sign In Form State
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
 
   // Sign Up Form State
   const [signUpData, setSignUpData] = useState({
@@ -56,6 +56,8 @@ export default function AuthModal() {
     setMode(modalMode);
     setGoogleAccountView(false);
     setError('');
+    setUsername('');
+    setPassword('');
   }, [modalMode, modalOpen]);
 
   // Load official Google Identity Services client SDK asynchronously
@@ -380,6 +382,8 @@ export default function AuthModal() {
                   onClick={() => {
                     setMode('login');
                     setError('');
+                    setUsername('');
+                    setPassword('');
                   }}
                   className={`flex-1 py-2 rounded-xl transition-all ${
                     mode === 'login'
@@ -394,6 +398,8 @@ export default function AuthModal() {
                   onClick={() => {
                     setMode('signup');
                     setError('');
+                    setUsername('');
+                    setPassword('');
                   }}
                   className={`flex-1 py-2 rounded-xl transition-all ${
                     mode === 'signup'
@@ -447,7 +453,7 @@ export default function AuthModal() {
                         required
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="e.g. admin@agrislot.com or farmer@agrislot.com"
+                        placeholder="Enter your username or email"
                         className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
                       />
                     </div>
@@ -484,35 +490,6 @@ export default function AuthModal() {
                       </>
                     )}
                   </button>
-
-                  {/* Fast 1-Click Demo Profiles */}
-                  <div className="pt-2">
-                    <span className="font-mono text-[10px] font-bold text-slate-400 uppercase block mb-1.5 text-center">
-                      Quick 1-Click Role Login
-                    </span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUsername('farmer@agrislot.com');
-                          setPassword('farmer123');
-                        }}
-                        className="py-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-600 text-emerald-950 font-bold text-xs shadow-sm flex items-center justify-center gap-1.5"
-                      >
-                        🌾 Farmer Login
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setUsername('admin@agrislot.com');
-                          setPassword('admin123');
-                        }}
-                        className="py-2 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border-2 border-amber-600 text-navy-border font-bold text-xs shadow-sm flex items-center justify-center gap-1.5"
-                      >
-                        🛡️ Admin Login
-                      </button>
-                    </div>
-                  </div>
                 </form>
               ) : (
                 /* MODE 2: SIGN UP / REGISTRATION FORM */
