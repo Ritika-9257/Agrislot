@@ -39,20 +39,23 @@ function AdminPortalContent() {
   const searchParams = useSearchParams();
   const tabParam = searchParams ? searchParams.get('tab') : null;
 
+  const isAdmin = authUser?.role === 'Admin';
+  const isOfficer = authUser?.role === 'Mandi_Officer';
+
   // Active Main Tab:
   // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'slots' | 'farmers' | 'analysis' | 'access'
   const [activeTab, setActiveTab] = useState(() => {
-    if (tabParam === 'users' || tabParam === 'access') return 'access';
+    if (tabParam === 'users' || tabParam === 'access') return isOfficer ? 'verify' : 'access';
     if (tabParam === 'bookings') return 'bookings';
     if (tabParam === 'active' || tabParam === 'inprocess') return 'active';
     if (tabParam === 'confirmed') return 'confirmed';
     if (tabParam === 'completed') return 'completed';
     if (tabParam === 'cancelled') return 'cancelled';
-    if (tabParam === 'slots') return 'slots';
-    if (tabParam === 'farmers') return 'farmers';
-    if (tabParam === 'analysis' || tabParam === 'dbms') return 'analysis';
+    if (tabParam === 'slots') return isOfficer ? 'verify' : 'slots';
+    if (tabParam === 'farmers') return isOfficer ? 'verify' : 'farmers';
+    if (tabParam === 'analysis' || tabParam === 'dbms') return isOfficer ? 'verify' : 'analysis';
     if (tabParam === 'verify' || tabParam === 'gate') return 'verify';
-    return 'overview';
+    return isOfficer ? 'verify' : 'overview';
   });
 
   // Overview Date Filter
@@ -109,20 +112,24 @@ function AdminPortalContent() {
 
   // Load initial data
   useEffect(() => {
+    if (isOfficer && ['access', 'users', 'analysis', 'dbms', 'slots', 'farmers'].includes(activeTab)) {
+      setActiveTab('verify');
+      return;
+    }
     loadBookings();
-    if (activeTab === 'access' || activeTab === 'users') {
+    if ((activeTab === 'access' || activeTab === 'users') && !isOfficer) {
       loadUsers();
     }
-    if (activeTab === 'slots') {
+    if (activeTab === 'slots' && !isOfficer) {
       loadSlots();
     }
-    if (activeTab === 'farmers') {
+    if (activeTab === 'farmers' && !isOfficer) {
       loadFarmers();
     }
-    if (activeTab === 'analysis') {
+    if (activeTab === 'analysis' && !isOfficer) {
       loadAnalysisData();
     }
-  }, [activeTab]);
+  }, [activeTab, isOfficer]);
 
   // Load All Bookings
   const loadBookings = async () => {
@@ -446,17 +453,19 @@ function AdminPortalContent() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
       
-      {/* Top Officer Header */}
+      {/* Top Officer/Admin Header */}
       <div className="bg-forest rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-saffron text-navy-border text-xs font-black uppercase tracking-wider mb-2 border border-navy-border">
-            <ShieldCheck className="w-3.5 h-3.5" /> Mandi Officer Desk — Authorized Gatekeeper
+            <ShieldCheck className="w-3.5 h-3.5" /> {isOfficer ? 'Mandi Officer Desk — Gate Clearance Terminal' : 'APMC Administrator Control Center'}
           </div>
           <h1 className="text-2xl sm:text-3xl font-display font-black text-white">
-            Mandi Gate Management
+            {isOfficer ? 'Mandi Gate Clearance Terminal' : 'APMC System Administration'}
           </h1>
           <p className="text-xs text-mint-foam mt-1">
-            Token verification, gate clearance, active in-yard tracking, slot capacity and admin access controls.
+            {isOfficer
+              ? 'Token verification, gate clearance, active in-yard tracking, and weighbridge check-in.'
+              : 'Centralized slot management, RBAC privileges, audit logs, and DBMS query analytics.'}
           </p>
         </div>
 
@@ -548,58 +557,62 @@ function AdminPortalContent() {
           >
             ✕ Cancelled ({cancelledBookings.length})
           </button>
-          <button
-            onClick={() => {
-              setActiveTab('slots');
-              loadSlots();
-            }}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
-              activeTab === 'slots'
-                ? 'bg-forest text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
-            }`}
-          >
-            🗂️ Slot Capacity
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('farmers');
-              loadFarmers();
-            }}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
-              activeTab === 'farmers'
-                ? 'bg-forest text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
-            }`}
-          >
-            🌾 Farmers
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('analysis');
-              loadAnalysisData();
-            }}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
-              activeTab === 'analysis'
-                ? 'bg-forest text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
-            }`}
-          >
-            📈 DBMS Analysis
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('access');
-              loadUsers();
-            }}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
-              activeTab === 'access'
-                ? 'bg-purple-700 text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
-            }`}
-          >
-            👥 Manage Admin Access
-          </button>
+          {!isOfficer && (
+            <>
+              <button
+                onClick={() => {
+                  setActiveTab('slots');
+                  loadSlots();
+                }}
+                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                  activeTab === 'slots'
+                    ? 'bg-forest text-white shadow-sm'
+                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                }`}
+              >
+                🗂️ Slot Capacity
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('farmers');
+                  loadFarmers();
+                }}
+                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                  activeTab === 'farmers'
+                    ? 'bg-forest text-white shadow-sm'
+                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                }`}
+              >
+                🌾 Farmers
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('analysis');
+                  loadAnalysisData();
+                }}
+                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                  activeTab === 'analysis'
+                    ? 'bg-forest text-white shadow-sm'
+                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                }`}
+              >
+                📈 DBMS Analysis
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('access');
+                  loadUsers();
+                }}
+                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                  activeTab === 'access'
+                    ? 'bg-purple-700 text-white shadow-sm'
+                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                }`}
+              >
+                👥 Manage Admin Access
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -728,27 +741,48 @@ function AdminPortalContent() {
               </button>
             </div>
 
-            <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-                <Users className="w-5 h-5" />
+            {isOfficer ? (
+              <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <h3 className="font-display font-black text-lg text-navy-border">
+                  Expected Arrivals ({upcomingBookings.length})
+                </h3>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Review confirmed bookings awaiting gate arrival and prepare weighbridge queue.
+                </p>
+                <button
+                  onClick={() => setActiveTab('confirmed')}
+                  className="py-2 px-4 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-700 transition-all flex items-center gap-1.5"
+                >
+                  <span>View Expected Arrivals</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
-              <h3 className="font-display font-black text-lg text-navy-border">
-                Manage Admin & Officer Access
-              </h3>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                Dynamically authorize administrative and mandi officer email accounts directly from MySQL records.
-              </p>
-              <button
-                onClick={() => {
-                  setActiveTab('access');
-                  loadUsers();
-                }}
-                className="py-2 px-4 rounded-xl bg-purple-700 text-white font-bold text-xs hover:bg-purple-800 transition-all flex items-center gap-1.5"
-              >
-                <span>Manage Admin Accounts</span>
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+            ) : (
+              <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
+                  <Users className="w-5 h-5" />
+                </div>
+                <h3 className="font-display font-black text-lg text-navy-border">
+                  Manage Admin & Officer Access
+                </h3>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Dynamically authorize administrative and mandi officer email accounts directly from MySQL records.
+                </p>
+                <button
+                  onClick={() => {
+                    setActiveTab('access');
+                    loadUsers();
+                  }}
+                  className="py-2 px-4 rounded-xl bg-purple-700 text-white font-bold text-xs hover:bg-purple-800 transition-all flex items-center gap-1.5"
+                >
+                  <span>Manage Admin Accounts</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
         </div>
@@ -1240,7 +1274,7 @@ function AdminPortalContent() {
       {/* ========================================================================= */}
       {/* SECTION H: SLOT AND CAPACITY MANAGEMENT                                   */}
       {/* ========================================================================= */}
-      {activeTab === 'slots' && (
+      {!isOfficer && activeTab === 'slots' && (
         <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-5">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b-2 border-gray-100 pb-3">
             <div>
@@ -1317,7 +1351,7 @@ function AdminPortalContent() {
       {/* ========================================================================= */}
       {/* SECTION I: FARMER PROFILES                                                */}
       {/* ========================================================================= */}
-      {activeTab === 'farmers' && (
+      {!isOfficer && activeTab === 'farmers' && (
         <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b-2 border-gray-100 pb-3">
             <div>
@@ -1386,7 +1420,7 @@ function AdminPortalContent() {
       {/* ========================================================================= */}
       {/* SECTION J: DBMS & BOOKING ANALYSIS (10 DBMS TABS)                         */}
       {/* ========================================================================= */}
-      {activeTab === 'analysis' && (
+      {!isOfficer && activeTab === 'analysis' && (
         <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-6">
           <div className="border-b-2 border-gray-100 pb-3">
             <span className="text-xs font-bold text-forest uppercase tracking-wider">DBMS Evaluation & Telemetry</span>
@@ -1553,7 +1587,7 @@ function AdminPortalContent() {
       {/* ========================================================================= */}
       {/* SECTION K: MANAGE ADMIN & OFFICER ACCESS                                 */}
       {/* ========================================================================= */}
-      {activeTab === 'access' && (
+      {!isOfficer && activeTab === 'access' && (
         <div className="space-y-6">
           
           {/* Quick Promote Form */}

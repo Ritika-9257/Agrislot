@@ -42,16 +42,23 @@ export default function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
-  // Role-aware navigation: Admins, normal users (Farmers), and public visitors
-  const isPrivileged = user?.role === 'Admin' || user?.role === 'Mandi_Officer';
-
+  // Three distinct role-based navigation menus: Admin, Mandi Officer, Farmer (and Public Visitor)
   let navLinks = [];
-  if (isPrivileged) {
+  if (user?.role === 'Admin') {
     navLinks = [
-      { href: '/admin', label: 'Mandi Officer Desk', icon: ShieldCheck, badge: 'OFFICER' },
-      { href: '/admin?tab=users', label: 'Admin & User Access', icon: Users, badge: 'RBAC' },
-      { href: '/farmer', label: 'Farmer Slot View', icon: Tractor, badge: 'SLOTS' },
-      { href: '/analytics', label: 'Mandi Reports & Stats', icon: BarChart3 },
+      { href: '/admin', label: 'Admin Dashboard', icon: ShieldCheck, badge: 'ADMIN' },
+      { href: '/admin?tab=users', label: 'Manage Roles (RBAC)', icon: Users, badge: 'ACCESS' },
+      { href: '/admin?tab=analysis', label: 'Database & Reports', icon: BarChart3, badge: 'DBMS' },
+      { href: '/admin?tab=slots', label: 'Slot Capacity Manager', icon: Layers },
+      { href: '/admin?tab=farmers', label: 'Farmer Master Directory', icon: Tractor },
+      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
+    ];
+  } else if (user?.role === 'Mandi_Officer') {
+    navLinks = [
+      { href: '/admin?tab=verify', label: 'Gate Clearance Desk', icon: ShieldCheck, badge: 'OFFICER' },
+      { href: '/admin?tab=active', label: 'Active In-Yard', icon: Tractor, badge: 'IN-YARD' },
+      { href: '/admin?tab=confirmed', label: 'Expected Arrivals', icon: CalendarCheck, badge: 'EXPECTED' },
+      { href: '/admin?tab=completed', label: 'Completed Unloadings', icon: CheckCircle2 },
       { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   } else if (user?.role === 'Farmer') {
@@ -61,7 +68,7 @@ export default function Sidebar() {
       { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   } else {
-    // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin links)
+    // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin / Officer links)
     navLinks = [
       { href: '/', label: 'Home Portal', icon: Layers },
       { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'FARMER' },

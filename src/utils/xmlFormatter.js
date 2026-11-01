@@ -1,6 +1,6 @@
 /**
  * Utility to convert JSON objects or arrays into well-formed XML
- * Formats database query results as well-formed XML for export and integration.
+ * Satisfies Lab 11 Section F: Data formatting in XML for Queries 1, 3, and 4.
  */
 
 function escapeXml(unsafe) {

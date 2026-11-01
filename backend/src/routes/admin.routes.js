@@ -19,14 +19,14 @@ router.use(authenticate, requireActiveRole('Admin', 'Mandi_Officer'));
 // Dashboard Overview (supports ?date=YYYY-MM-DD&mandiId=1)
 router.get('/dashboard', AdminController.getDashboard);
 
-// User & Role Management (Listing permitted for Admin/Officer; Role modification strictly Admin)
-router.get('/users', AdminController.getAllUsers);
-router.get('/users/:id', AdminController.getUserById);
+// User & Role Management (Strictly Admin only: Officers cannot view or manage user accounts)
+router.get('/users', requireActiveRole('Admin'), AdminController.getAllUsers);
+router.get('/users/:id', requireActiveRole('Admin'), AdminController.getUserById);
 router.patch('/users/:id/role', requireActiveRole('Admin'), AdminController.updateUserRole);
 router.post('/users/assign-role', requireActiveRole('Admin'), AdminController.assignUserRole);
 
-// Audit History (Protected, read-only audit records)
-router.get('/audit-logs', AdminController.getAuditLogs);
+// Audit History (Protected, read-only audit records for Admin only)
+router.get('/audit-logs', requireActiveRole('Admin'), AdminController.getAuditLogs);
 
 // CSV Data Exports (Protected, formula-injection safe RFC 4180)
 router.get('/export/bookings.csv', AdminController.exportBookingsCsv);
@@ -46,9 +46,6 @@ router.patch(
 // Farmer Directory
 router.get('/farmers', FarmerController.getAllFarmers);
 router.get('/farmers/:id', FarmerController.getFarmerById);
-router.post('/farmers', requireActiveRole('Admin'), FarmerController.createFarmerAdmin);
-router.patch('/farmers/:id', requireActiveRole('Admin'), FarmerController.updateFarmerAdmin);
-router.delete('/farmers/:id', requireActiveRole('Admin'), FarmerController.deleteFarmerAdmin);
 
 // Slot & Mandi Utilization
 router.get('/slots/utilization', SlotController.getUtilization);
