@@ -7,9 +7,9 @@ const LanguageContext = createContext();
 export const TRANSLATIONS = {
   en: {
     // Navigation & Global
-    inboundTerminal: 'INBOUND TERMINAL 02',
-    clearanceDesk: 'Weighbridge Clearance Desk',
-    navClearance: 'Clearance Desk',
+    inboundTerminal: 'APMC MANDI GATEWAY',
+    clearanceDesk: 'Mandi Slot & Gate Management',
+    navClearance: 'Home Portal',
     navBookSlot: 'Book Mandi Slot',
     navVerifyPass: 'Verify Gate-Pass',
     navAdminDesk: 'Mandi Officer Desk',

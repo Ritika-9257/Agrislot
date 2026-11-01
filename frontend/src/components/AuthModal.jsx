@@ -11,15 +11,9 @@ import {
   UserPlus,
   Loader2,
   ExternalLink,
-  ShieldAlert,
-  KeyRound,
-  CheckCircle2,
-  Phone,
-  ShieldCheck
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { AgriSlotAPI } from '@/lib/api';
-import { normalizePhoneNumber, normalizeLoginIdentifier } from '@/lib/normalize';
 
 export default function AuthModal() {
   const { 
@@ -31,7 +25,7 @@ export default function AuthModal() {
     signupFarmer 
   } = useAuth();
 
-  const [mode, setMode] = useState(modalMode); // 'login' | 'signup' | 'setup'
+  const [mode, setMode] = useState(modalMode); // 'login' | 'signup'
   const [googleAccountView, setGoogleAccountView] = useState(false);
   const [googleScriptReady, setGoogleScriptReady] = useState(false);
 
@@ -51,15 +45,6 @@ export default function AuthModal() {
     Password: '',
   });
 
-  // Setup / Reset Passcode Form State
-  const [setupData, setSetupData] = useState({
-    Phone: '',
-    Aadhaar_No: '',
-    Password: '',
-    Confirm_Password: '',
-  });
-  const [setupSuccess, setSetupSuccess] = useState('');
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -71,7 +56,6 @@ export default function AuthModal() {
     setMode(modalMode);
     setGoogleAccountView(false);
     setError('');
-    setSetupSuccess('');
   }, [modalMode, modalOpen]);
 
   // Load official Google Identity Services client SDK asynchronously
@@ -168,17 +152,9 @@ export default function AuthModal() {
   const handleSignIn = async (e) => {
     e.preventDefault();
     setError('');
-
-    // Normalize phone number or username
-    const norm = normalizeLoginIdentifier(username);
-    if (!norm.valid) {
-      setError(norm.error);
-      return;
-    }
-
     setLoading(true);
     try {
-      await loginWithCredentials(norm.value, password);
+      await loginWithCredentials(username, password);
     } catch (err) {
       setError(err.message || 'Invalid username or password');
     } finally {
@@ -193,80 +169,11 @@ export default function AuthModal() {
       setError('Please provide your full name and 10-digit mobile number.');
       return;
     }
-
-    // Normalize mobile number
-    const normPhone = normalizePhoneNumber(signUpData.Phone_Number);
-    if (!normPhone.valid) {
-      setError(normPhone.error);
-      return;
-    }
-
-    if (!signUpData.Password || signUpData.Password.length < 6) {
-      setError('Passcode must be at least 6 characters long.');
-      return;
-    }
-
     setLoading(true);
     try {
-      await signupFarmer({
-        ...signUpData,
-        Phone_Number: normPhone.phone,
-      });
+      await signupFarmer(signUpData);
     } catch (err) {
       setError(err.message || 'Registration failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSetupPassword = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSetupSuccess('');
-
-    // 1. Normalize Phone Number
-    const normPhone = normalizePhoneNumber(setupData.Phone);
-    if (!normPhone.valid) {
-      setError(normPhone.error);
-      return;
-    }
-
-    // 2. Validate Aadhaar Number
-    const cleanAadhaar = String(setupData.Aadhaar_No || '').trim().replace(/\D/g, '');
-    if (!/^\d{12}$/.test(cleanAadhaar)) {
-      setError('Please provide a valid 12-digit Aadhaar number for identity verification.');
-      return;
-    }
-
-    // 3. Validate Passcode
-    if (!setupData.Password || setupData.Password.length < 6) {
-      setError('New passcode must be at least 6 characters long.');
-      return;
-    }
-    if (setupData.Password !== setupData.Confirm_Password) {
-      setError('Passcodes do not match. Please verify and re-type.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await AgriSlotAPI.setupPassword({
-        phone: normPhone.phone,
-        aadhaarNo: cleanAadhaar,
-        password: setupData.Password,
-      });
-
-      setSetupSuccess(res?.message || 'Passcode updated successfully! You can now sign in.');
-      setUsername(normPhone.phone);
-      setPassword(setupData.Password);
-      setSetupData({
-        Phone: '',
-        Aadhaar_No: '',
-        Password: '',
-        Confirm_Password: '',
-      });
-    } catch (err) {
-      setError(err.message || 'Passcode setup failed. Please verify your registered details.');
     } finally {
       setLoading(false);
     }
@@ -437,7 +344,7 @@ export default function AuthModal() {
             </div>
           </div>
         ) : (
-          /* VIEW 2: STANDARD AGRISLOT MODAL (Sign In / Register / Passcode Setup) */
+          /* VIEW 2: STANDARD AGRISLOT MODAL (Sign In / Register) */
           <div>
             {/* Top Header Pill Bar */}
             <div className="px-6 py-4 bg-mint-foam border-b-[2px] border-navy-border flex items-center justify-between">
@@ -466,84 +373,58 @@ export default function AuthModal() {
             </div>
 
             <div className="p-6 space-y-5 bg-white">
-              {/* Mode Switcher / Breadcrumb */}
-              {mode === 'setup' ? (
-                <div className="flex items-center justify-between p-2 bg-canvas rounded-2xl border-[2px] border-navy-border shadow-bento-sm font-mono text-xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('login');
-                      setError('');
-                      setSetupSuccess('');
-                    }}
-                    className="flex items-center gap-1.5 font-bold text-forest hover:underline px-2 py-1"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                    <span>Back to Sign In</span>
-                  </button>
-                  <span className="font-bold text-slate-600 uppercase text-[11px] pr-2">
-                    Passcode Setup &amp; Recovery
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center p-1 bg-canvas rounded-2xl border-[2px] border-navy-border shadow-bento-sm font-display font-black text-xs uppercase tracking-wider">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('login');
-                      setError('');
-                      setSetupSuccess('');
-                    }}
-                    className={`flex-1 py-2 rounded-xl transition-all ${
-                      mode === 'login'
-                        ? 'bg-forest text-white shadow-bento-sm'
-                        : 'text-navy-border hover:bg-mint-foam'
-                    }`}
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('signup');
-                      setError('');
-                      setSetupSuccess('');
-                    }}
-                    className={`flex-1 py-2 rounded-xl transition-all ${
-                      mode === 'signup'
-                        ? 'bg-forest text-white shadow-bento-sm'
-                        : 'text-navy-border hover:bg-mint-foam'
-                    }`}
-                  >
-                    New Registration
-                  </button>
-                </div>
-              )}
+              {/* Segmented Switcher */}
+              <div className="flex items-center p-1 bg-canvas rounded-2xl border-[2px] border-navy-border shadow-bento-sm font-display font-black text-xs uppercase tracking-wider">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setError('');
+                  }}
+                  className={`flex-1 py-2 rounded-xl transition-all ${
+                    mode === 'login'
+                      ? 'bg-forest text-white shadow-bento-sm'
+                      : 'text-navy-border hover:bg-mint-foam'
+                  }`}
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signup');
+                    setError('');
+                  }}
+                  className={`flex-1 py-2 rounded-xl transition-all ${
+                    mode === 'signup'
+                      ? 'bg-forest text-white shadow-bento-sm'
+                      : 'text-navy-border hover:bg-mint-foam'
+                  }`}
+                >
+                  New Registration
+                </button>
+              </div>
 
-              {/* Continue with Google Button (only for standard sign-in / registration) */}
-              {mode !== 'setup' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setError('');
-                      setGoogleAccountView(true);
-                    }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 border-[2px] border-navy-border shadow-bento-sm hover:shadow-bento-hover active:translate-y-0.5 transition-all flex items-center justify-center gap-3 font-mono text-xs font-bold text-navy-border"
-                  >
-                    <GoogleLogo size="w-4 h-4" />
-                    <span>Continue with Google</span>
-                  </button>
+              {/* Continue with Google Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  setGoogleAccountView(true);
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-slate-50 border-[2px] border-navy-border shadow-bento-sm hover:shadow-bento-hover active:translate-y-0.5 transition-all flex items-center justify-center gap-3 font-mono text-xs font-bold text-navy-border"
+              >
+                <GoogleLogo size="w-4 h-4" />
+                <span>Continue with Google</span>
+              </button>
 
-                  <div className="flex items-center gap-3 my-2">
-                    <div className="flex-1 h-[1.5px] bg-slate-200"></div>
-                    <span className="font-mono text-[10px] font-bold text-slate-400 uppercase">
-                      OR WITH USERNAME &amp; PASSCODE
-                    </span>
-                    <div className="flex-1 h-[1.5px] bg-slate-200"></div>
-                  </div>
-                </>
-              )}
+              <div className="flex items-center gap-3 my-2">
+                <div className="flex-1 h-[1.5px] bg-slate-200"></div>
+                <span className="font-mono text-[10px] font-bold text-slate-400 uppercase">
+                  OR WITH USERNAME &amp; PASSCODE
+                </span>
+                <div className="flex-1 h-[1.5px] bg-slate-200"></div>
+              </div>
 
               {error && (
                 <div className="p-3 rounded-xl bg-coral/60 border border-navy-border text-coral-dark text-xs font-mono font-bold flex items-center gap-2">
@@ -552,151 +433,12 @@ export default function AuthModal() {
                 </div>
               )}
 
-              {/* MODE 1: FORGOT PASSCODE / SETUP PASSCODE WITH IDENTITY VERIFICATION */}
-              {mode === 'setup' ? (
-                <div className="space-y-4">
-                  <div className="p-3 bg-mint-foam/80 rounded-xl border border-navy-border space-y-1">
-                    <div className="flex items-center gap-2 font-bold text-navy-border text-xs">
-                      <ShieldCheck className="w-4 h-4 text-forest shrink-0" />
-                      <span>Producer Identity Verification</span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 font-mono leading-relaxed">
-                      For your security, setting or updating your passcode requires verifying both your registered mobile number and your 12-digit Aadhaar number.
-                    </p>
-                  </div>
-
-                  {setupSuccess ? (
-                    <div className="p-4 rounded-xl bg-mint-light border border-forest space-y-3 font-mono text-xs">
-                      <div className="flex items-center gap-2 font-bold text-forest-dark">
-                        <CheckCircle2 className="w-5 h-5 text-forest shrink-0" />
-                        <span>{setupSuccess}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-700">
-                        Your credentials have been verified and updated. You can now sign in using your mobile number and new passcode.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMode('login');
-                          setError('');
-                          setSetupSuccess('');
-                        }}
-                        className="w-full py-2.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-xs uppercase tracking-wider border-[2px] border-navy-border shadow-bento active:translate-y-0.5 transition-all flex items-center justify-center gap-2"
-                      >
-                        <LogIn className="w-4 h-4 text-saffron" />
-                        <span>Proceed to Sign In</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleSetupPassword} className="space-y-3 font-mono text-xs">
-                      <div>
-                        <label className="block font-bold text-slate-600 mb-1 uppercase">
-                          Registered Mobile Number
-                        </label>
-                        <div className="relative">
-                          <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                          <input
-                            type="tel"
-                            required
-                            placeholder="e.g. 9876543210 or +91 98765-43210"
-                            value={setupData.Phone}
-                            onChange={(e) => setSetupData({ ...setupData, Phone: e.target.value })}
-                            className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block font-bold text-slate-600 mb-1 uppercase">
-                          12-Digit Aadhaar Number
-                        </label>
-                        <div className="relative">
-                          <ShieldCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                          <input
-                            type="text"
-                            required
-                            maxLength={12}
-                            placeholder="12 digits matching registered record"
-                            value={setupData.Aadhaar_No}
-                            onChange={(e) => setSetupData({ ...setupData, Aadhaar_No: e.target.value.replace(/\D/g, '') })}
-                            className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block font-bold text-slate-600 mb-1 uppercase">
-                            New Passcode
-                          </label>
-                          <div className="relative">
-                            <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                            <input
-                              type="password"
-                              required
-                              placeholder="Min 6 chars"
-                              value={setupData.Password}
-                              onChange={(e) => setSetupData({ ...setupData, Password: e.target.value })}
-                              className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block font-bold text-slate-600 mb-1 uppercase">
-                            Confirm Passcode
-                          </label>
-                          <div className="relative">
-                            <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                            <input
-                              type="password"
-                              required
-                              placeholder="Re-type passcode"
-                              value={setupData.Confirm_Password}
-                              onChange={(e) => setSetupData({ ...setupData, Confirm_Password: e.target.value })}
-                              className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full h-12 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-xs uppercase tracking-wider border-[2px] border-navy-border shadow-bento active:translate-y-0.5 transition-all flex items-center justify-center gap-2 mt-4"
-                      >
-                        {loading ? (
-                          <span>Verifying Identity...</span>
-                        ) : (
-                          <>
-                            <KeyRound className="w-4 h-4 text-saffron" />
-                            <span>Verify Identity &amp; Set Passcode</span>
-                          </>
-                        )}
-                      </button>
-
-                      <div className="text-center pt-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMode('login');
-                            setError('');
-                            setSetupSuccess('');
-                          }}
-                          className="text-xs font-mono font-bold text-slate-600 hover:text-navy-border underline inline-flex items-center gap-1"
-                        >
-                          <ArrowLeft className="w-3.5 h-3.5" />
-                          <span>Cancel and return to Sign In</span>
-                        </button>
-                      </div>
-                    </form>
-                  )}
-                </div>
-              ) : mode === 'login' ? (
-                /* MODE 2: SIGN IN FORM */
+              {/* MODE 1: SIGN IN FORM */}
+              {mode === 'login' ? (
                 <form onSubmit={handleSignIn} className="space-y-3 font-mono text-xs">
                   <div>
                     <label className="block font-bold text-slate-600 mb-1 uppercase">
-                      Username / Mobile
+                      Email or Username
                     </label>
                     <div className="relative">
                       <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -705,32 +447,16 @@ export default function AuthModal() {
                         required
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        placeholder="e.g. 9876543210, +91 98765-43210, or admin"
+                        placeholder="e.g. admin@agrislot.com or farmer@agrislot.com"
                         className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block font-bold text-slate-600 uppercase">
-                        Password / Passcode
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMode('setup');
-                          setError('');
-                          setSetupSuccess('');
-                          if (username && username !== 'admin' && username !== 'farmer') {
-                            setSetupData((prev) => ({ ...prev, Phone: username }));
-                          }
-                        }}
-                        className="text-[11px] font-bold text-forest hover:underline font-mono"
-                      >
-                        Forgot / Set Up Passcode?
-                      </button>
-                    </div>
+                    <label className="block font-bold text-slate-600 mb-1 uppercase">
+                      Password / Passcode
+                    </label>
                     <div className="relative">
                       <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
@@ -762,34 +488,34 @@ export default function AuthModal() {
                   {/* Fast 1-Click Demo Profiles */}
                   <div className="pt-2">
                     <span className="font-mono text-[10px] font-bold text-slate-400 uppercase block mb-1.5 text-center">
-                      Demo Quick-Login
+                      Quick 1-Click Role Login
                     </span>
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
                         onClick={() => {
-                          setUsername('farmer');
+                          setUsername('farmer@agrislot.com');
                           setPassword('farmer123');
                         }}
-                        className="py-1.5 px-2 rounded-lg bg-mint-foam hover:bg-mint-light border border-navy-border text-forest font-bold text-[11px] shadow-sm active:translate-y-0.5"
+                        className="py-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-600 text-emerald-950 font-bold text-xs shadow-sm flex items-center justify-center gap-1.5"
                       >
-                        Demo Farmer
+                        🌾 Farmer Login
                       </button>
                       <button
                         type="button"
                         onClick={() => {
-                          setUsername('admin');
+                          setUsername('admin@agrislot.com');
                           setPassword('admin123');
                         }}
-                        className="py-1.5 px-2 rounded-lg bg-saffron-light hover:bg-saffron border border-navy-border text-navy-border font-bold text-[11px] shadow-sm active:translate-y-0.5"
+                        className="py-2 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border-2 border-amber-600 text-navy-border font-bold text-xs shadow-sm flex items-center justify-center gap-1.5"
                       >
-                        Mandi Officer (Admin)
+                        🛡️ Admin Login
                       </button>
                     </div>
                   </div>
                 </form>
               ) : (
-                /* MODE 3: SIGN UP / REGISTRATION FORM */
+                /* MODE 2: SIGN UP / REGISTRATION FORM */
                 <form onSubmit={handleSignUp} className="space-y-3 font-mono text-xs">
                   <div>
                     <label className="block font-bold text-slate-600 mb-1 uppercase">
@@ -816,7 +542,8 @@ export default function AuthModal() {
                       <input
                         type="tel"
                         required
-                        placeholder="e.g. +91 98765-43210"
+                        pattern="[0-9]{10}"
+                        placeholder="10 digit number"
                         value={signUpData.Phone_Number}
                         onChange={(e) => setSignUpData({ ...signUpData, Phone_Number: e.target.value })}
                         className="w-full h-11 px-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
@@ -867,23 +594,6 @@ export default function AuthModal() {
 
                   <div>
                     <label className="block font-bold text-slate-600 mb-1 uppercase">
-                      Aadhaar Number (12 digits)
-                    </label>
-                    <div className="relative">
-                      <ShieldCheck className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        maxLength={12}
-                        placeholder="12 digits (for identity verification)"
-                        value={signUpData.Aadhaar_Number}
-                        onChange={(e) => setSignUpData({ ...signUpData, Aadhaar_Number: e.target.value.replace(/\D/g, '') })}
-                        className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-slate-600 mb-1 uppercase">
                       Create Passcode
                     </label>
                     <div className="relative">
@@ -891,7 +601,7 @@ export default function AuthModal() {
                       <input
                         type="password"
                         required
-                        placeholder="Minimum 6 characters"
+                        placeholder="Enter safe passcode"
                         value={signUpData.Password}
                         onChange={(e) => setSignUpData({ ...signUpData, Password: e.target.value })}
                         className="w-full h-11 pl-10 pr-3 bg-mint-light/40 border-[2px] border-navy-border rounded-xl text-navy-border font-bold focus:ring-0 focus:border-forest shadow-bento-sm"

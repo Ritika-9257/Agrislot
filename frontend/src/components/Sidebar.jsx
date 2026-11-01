@@ -48,24 +48,24 @@ export default function Sidebar() {
   let navLinks = [];
   if (isPrivileged) {
     navLinks = [
-      { href: '/admin', label: t('navAdminDesk'), icon: Scale, badge: 'OFFICER' },
-      { href: '/admin?tab=users', label: t('navUserMgmt') || 'User Roles & Access', icon: Users, badge: 'RBAC' },
-      { href: '/', label: t('navClearance'), icon: ShieldCheck, badge: 'LIVE' },
-      { href: '/analytics', label: t('navAnalytics'), icon: BarChart3 },
-      { href: '/verify', label: t('navVerifyPass'), icon: QrCode },
+      { href: '/admin', label: 'Mandi Officer Desk', icon: ShieldCheck, badge: 'OFFICER' },
+      { href: '/admin?tab=users', label: 'Admin & User Access', icon: Users, badge: 'RBAC' },
+      { href: '/farmer', label: 'Farmer Slot View', icon: Tractor, badge: 'SLOTS' },
+      { href: '/analytics', label: 'Mandi Reports & Stats', icon: BarChart3 },
+      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   } else if (user?.role === 'Farmer') {
     navLinks = [
-      { href: '/farmer', label: t('navMyBookings') || 'My Bookings & Slots', icon: Tractor, badge: 'DASHBOARD' },
-      { href: '/', label: t('navClearance'), icon: ShieldCheck, badge: 'TERMINAL' },
-      { href: '/verify', label: t('navVerifyPass'), icon: QrCode },
+      { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'SLOTS' },
+      { href: '/farmer?tab=history', label: 'My Bookings & Passes', icon: CalendarCheck, badge: 'PASSES' },
+      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   } else {
-    // Unauthenticated visitor
+    // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin links)
     navLinks = [
-      { href: '/', label: t('navClearance'), icon: ShieldCheck, badge: 'LIVE' },
-      { href: '/farmer', label: t('navBookSlot'), icon: Tractor },
-      { href: '/verify', label: t('navVerifyPass'), icon: QrCode },
+      { href: '/', label: 'Home Portal', icon: Layers },
+      { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'FARMER' },
+      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
     ];
   }
 

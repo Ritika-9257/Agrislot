@@ -12,7 +12,7 @@ const {
 const router = express.Router();
 
 router.get('/', validateRequest({ query: filterBookingsQuerySchema }), BookingController.getAllBookings);
-router.post('/', validateRequest({ body: createBookingSchema }), BookingController.createBooking);
+router.post('/', authenticateOptional, validateRequest({ body: createBookingSchema }), BookingController.createBooking);
 router.post('/check-in', BookingController.checkInByToken);
 router.get('/token/:token', validateRequest({ params: bookingTokenParamSchema }), BookingController.getBookingByToken);
 router.get('/:id', validateRequest({ params: bookingIdParamSchema }), authenticateOptional, BookingController.getBookingById);

@@ -1,7 +1,56 @@
 const db = require('../config/database');
 
 const SlotRepository = {
+  async ensureSlotsForDate(mandiId = 1, date) {
+    if (!mandiId || !date) return;
+    try {
+      const [existing] = await db.query(
+        'SELECT COUNT(*) AS cnt FROM Slots WHERE Mandi_ID = ? AND Slot_Date = ?',
+        [mandiId, date]
+      );
+      if (existing && existing[0]?.cnt > 0) return;
+
+      const slotIntervals = [
+        { start: '09:00:00', end: '09:20:00', cap: 50 },
+        { start: '09:20:00', end: '09:40:00', cap: 50 },
+        { start: '09:40:00', end: '10:00:00', cap: 50 },
+        { start: '10:00:00', end: '10:20:00', cap: 50 },
+        { start: '10:20:00', end: '10:40:00', cap: 50 },
+        { start: '10:40:00', end: '11:00:00', cap: 50 },
+        { start: '11:00:00', end: '11:20:00', cap: 50 },
+        { start: '11:20:00', end: '11:40:00', cap: 50 },
+        { start: '11:40:00', end: '12:00:00', cap: 50 },
+        { start: '12:00:00', end: '12:20:00', cap: 50 },
+        { start: '12:20:00', end: '12:40:00', cap: 50 },
+        { start: '12:40:00', end: '13:00:00', cap: 50 },
+        // 13:00 - 14:00 Mandi Lunch Break is intentionally skipped
+        { start: '14:00:00', end: '14:20:00', cap: 50 },
+        { start: '14:20:00', end: '14:40:00', cap: 50 },
+        { start: '14:40:00', end: '15:00:00', cap: 50 },
+        { start: '15:00:00', end: '15:20:00', cap: 50 },
+        { start: '15:20:00', end: '15:40:00', cap: 50 },
+        { start: '15:40:00', end: '16:00:00', cap: 50 },
+        { start: '16:00:00', end: '16:20:00', cap: 50 },
+        { start: '16:20:00', end: '16:40:00', cap: 50 },
+        { start: '16:40:00', end: '17:00:00', cap: 50 }
+      ];
+
+      for (const item of slotIntervals) {
+        await db.query(
+          `INSERT IGNORE INTO Slots (Mandi_ID, Slot_Date, Start_Time, End_Time, Max_Capacity_Tons, Booked_Capacity_Tons)
+           VALUES (?, ?, ?, ?, ?, 0.00)`,
+          [mandiId, date, item.start, item.end, item.cap]
+        );
+      }
+    } catch {
+      // Non-fatal if database is offline or in read-only mode during testing
+    }
+  },
+
   async findAll({ mandiId, date, availableOnly = false, page = 1, limit = 50 } = {}) {
+    if (date && mandiId) {
+      await this.ensureSlotsForDate(mandiId, date);
+    }
     let sql = `
       SELECT 
         s.Slot_ID,

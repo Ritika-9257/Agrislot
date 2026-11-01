@@ -8,8 +8,7 @@ import {
   LogOut, 
   User, 
   ShieldCheck, 
-  CheckCircle2,
-  Globe
+  CheckCircle2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
@@ -22,7 +21,7 @@ export default function Header({ title }) {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const { user, openLogin, openSignup, logout } = useAuth();
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
 
   const displayTitle = title || t('clearanceDesk');
 
@@ -111,46 +110,6 @@ export default function Header({ title }) {
         </div>
 
         <div className="flex items-center gap-2.5 sm:gap-3">
-          {/* Vernacular Language Switcher Pill */}
-          <div className="flex items-center bg-mint-foam p-1 rounded-xl border-[1.5px] border-navy-border shadow-bento-sm font-mono text-xs font-black">
-            <span className="px-1.5 text-forest flex items-center">
-              <Globe className="w-3.5 h-3.5" />
-            </span>
-            <button
-              onClick={() => setLanguage('en')}
-              className={`px-2 py-0.5 rounded-lg transition-all ${
-                language === 'en'
-                  ? 'bg-forest text-saffron shadow-sm'
-                  : 'text-navy-border hover:bg-white'
-              }`}
-              title="English"
-            >
-              EN
-            </button>
-            <button
-              onClick={() => setLanguage('hi')}
-              className={`px-2 py-0.5 rounded-lg transition-all ${
-                language === 'hi'
-                  ? 'bg-forest text-saffron shadow-sm'
-                  : 'text-navy-border hover:bg-white'
-              }`}
-              title="हिन्दी (Hindi)"
-            >
-              हिं
-            </button>
-            <button
-              onClick={() => setLanguage('gu')}
-              className={`px-2 py-0.5 rounded-lg transition-all ${
-                language === 'gu'
-                  ? 'bg-forest text-saffron shadow-sm'
-                  : 'text-navy-border hover:bg-white'
-              }`}
-              title="ગુજરાતી (Gujarati)"
-            >
-              ગુ
-            </button>
-          </div>
-
           {/* In-App Notifications Bell Dropdown */}
           <div className="relative">
             <button

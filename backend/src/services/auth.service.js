@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const env = require('../config/env');
 const UserRepository = require('../repositories/user.repository');
+const FarmerRepository = require('../repositories/farmer.repository');
 const { AppError } = require('../middleware/errorHandler');
 
 let googleOAuthClient = null;
@@ -26,11 +27,13 @@ const AuthService = {
   },
 
   /**
-   * Standard username/password login for administrative, farmer and demo users.
-   * Supports identifier lookup by Username, registered Farmer Phone, or Email.
+   * Standard username/password login for administrative and demo users.
    */
   async login(username, password) {
-    const user = await UserRepository.findByUsernameOrIdentifier(username);
+    let user = await UserRepository.findByUsername(username);
+    if (!user) {
+      user = await UserRepository.findByEmail(username);
+    }
     if (!user) {
       throw new AppError('Invalid username or password', 401, 'INVALID_CREDENTIALS');
     }
@@ -49,92 +52,51 @@ const AuthService = {
 
     await UserRepository.updateLastLogin(user.User_ID);
 
+    // Auto-link/heal Farmer_ID if user is a Farmer and Farmer_ID is missing
+    let farmerId = user.Farmer_ID || null;
+    if (user.User_Role === 'Farmer' && !farmerId) {
+      try {
+        const derivedPhone = '9' + String(user.User_ID).padStart(9, '0');
+        let farmerRecord = await FarmerRepository.findByPhone(derivedPhone);
+        if (!farmerRecord) {
+          const derivedName = user.Full_Name || user.Username;
+          const derivedAadhar = '9' + String(user.User_ID).padStart(11, '0');
+          farmerId = await FarmerRepository.create({
+            Name: derivedName,
+            Phone: derivedPhone,
+            Aadhar_No: derivedAadhar,
+            UPI_ID: `${user.Username}@upi`,
+            Village: 'Mandi Area'
+          });
+        } else {
+          farmerId = farmerRecord.Farmer_ID;
+        }
+        await UserRepository.linkFarmer(user.User_ID, farmerId);
+      } catch (e) {
+        // Safe fallback if database is offline or readonly
+      }
+    }
+
     const token = jwt.sign(
       {
         userId: user.User_ID,
         username: user.Username,
-        role: user.User_Role,
-        farmerId: user.Farmer_ID || null
+        role: user.User_Role
       },
       env.JWT_SECRET,
       { expiresIn: env.JWT_EXPIRES_IN }
     );
-
-    let farmerProfile = null;
-    if (user.Farmer_ID) {
-      try {
-        const FarmerRepository = require('../repositories/farmer.repository');
-        const { maskFarmerProfile } = require('../utils/maskData');
-        const farmer = await FarmerRepository.findById(user.Farmer_ID);
-        if (farmer) {
-          farmerProfile = maskFarmerProfile(farmer);
-        }
-      } catch (fErr) {}
-    }
 
     return {
       token,
       user: {
         userId: user.User_ID,
         username: user.Username,
-        name: farmerProfile?.Name || user.Full_Name || user.Username,
-        phone: farmerProfile?.Phone || user.Username,
-        village: farmerProfile?.Village || null,
+        name: user.Full_Name || user.Username,
+        email: user.Email || null,
         role: user.User_Role,
-        farmerId: user.Farmer_ID || null,
-        farmerProfile
+        farmerId: farmerId || user.Farmer_ID || null
       }
-    };
-  },
-
-  /**
-   * Safe identity-verified password setup / reset for existing farmers.
-   * Requires matching Phone and Aadhaar number to prevent unauthorized access.
-   */
-  async setupPassword({ phone, aadhaarNo, password }) {
-    const FarmerRepository = require('../repositories/farmer.repository');
-    if (!phone || !aadhaarNo || !password) {
-      throw new AppError('Phone number, Aadhaar number, and new password are required', 400, 'MISSING_FIELDS');
-    }
-    if (typeof password !== 'string' || password.length < 6) {
-      throw new AppError('Password must be at least 6 characters', 400, 'INVALID_PASSWORD');
-    }
-    const cleanPhone = String(phone).trim();
-    const cleanAadhaar = String(aadhaarNo).trim();
-    const farmer = await FarmerRepository.findByPhone(cleanPhone);
-    if (!farmer) {
-      throw new AppError('No registered farmer found with this phone number', 404, 'FARMER_NOT_FOUND');
-    }
-    if (farmer.Aadhar_No !== cleanAadhaar) {
-      throw new AppError('Aadhaar verification failed for this farmer account', 403, 'VERIFICATION_FAILED');
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-
-    let user = await UserRepository.findByFarmerId(farmer.Farmer_ID);
-    if (!user) {
-      user = await UserRepository.findByUsername(cleanPhone);
-    }
-
-    if (user) {
-      await UserRepository.updatePassword(user.User_ID, passwordHash);
-      if (!user.Farmer_ID) {
-        await UserRepository.linkFarmer(user.User_ID, farmer.Farmer_ID);
-      }
-    } else {
-      await UserRepository.create({
-        username: cleanPhone,
-        passwordHash,
-        role: 'Farmer',
-        status: 'Active',
-        fullName: farmer.Name,
-        farmerId: farmer.Farmer_ID
-      });
-    }
-
-    return {
-      message: 'Password set up successfully. You can now log in with your mobile number.'
     };
   },
 
@@ -181,30 +143,39 @@ const AuthService = {
       throw new AppError(`Account is ${user.Account_Status.toLowerCase()}. Please contact administrator.`, 403, 'ACCOUNT_INACTIVE');
     }
 
-    let farmerProfile = null;
-    if (user.Farmer_ID) {
+    let farmerId = user.Farmer_ID || null;
+    if (user.User_Role === 'Farmer' && !farmerId) {
       try {
-        const FarmerRepository = require('../repositories/farmer.repository');
-        const { maskFarmerProfile } = require('../utils/maskData');
-        const farmer = await FarmerRepository.findById(user.Farmer_ID);
-        if (farmer) {
-          farmerProfile = maskFarmerProfile(farmer);
+        const derivedPhone = '9' + String(user.User_ID).padStart(9, '0');
+        let farmerRecord = await FarmerRepository.findByPhone(derivedPhone);
+        if (!farmerRecord) {
+          const derivedName = user.Full_Name || user.Username;
+          const derivedAadhar = '9' + String(user.User_ID).padStart(11, '0');
+          farmerId = await FarmerRepository.create({
+            Name: derivedName,
+            Phone: derivedPhone,
+            Aadhar_No: derivedAadhar,
+            UPI_ID: `${user.Username}@upi`,
+            Village: 'Mandi Area'
+          });
+        } else {
+          farmerId = farmerRecord.Farmer_ID;
         }
-      } catch (fErr) {}
+        await UserRepository.linkFarmer(user.User_ID, farmerId);
+      } catch (e) {
+        // Safe fallback
+      }
     }
 
     return {
       userId: user.User_ID,
       username: user.Username,
       email: user.Email,
-      name: farmerProfile?.Name || user.Full_Name || user.Username,
-      phone: farmerProfile?.Phone || user.Username,
-      village: farmerProfile?.Village || null,
+      name: user.Full_Name || user.Username,
       avatar: user.Avatar_Url,
       role: user.User_Role,
       status: user.Account_Status,
-      farmerId: user.Farmer_ID || null,
-      farmerProfile,
+      farmerId: farmerId || user.Farmer_ID || null,
       createdAt: user.Created_At
     };
   },
@@ -371,8 +342,7 @@ const AuthService = {
             User_Role: 'Farmer',
             Account_Status: 'Active',
             Full_Name: googleName,
-            Avatar_Url: googleAvatar,
-            Farmer_ID: null
+            Avatar_Url: googleAvatar
           };
         } catch (err) {
           // In-memory fallback if database is offline during testing
@@ -384,14 +354,38 @@ const AuthService = {
             User_Role: 'Farmer',
             Account_Status: 'Active',
             Full_Name: googleName,
-            Avatar_Url: googleAvatar,
-            Farmer_ID: null
+            Avatar_Url: googleAvatar
           };
         }
       }
     }
 
-    // 5. Issue AgriSlot signed JWT
+    // 5. Ensure farmer profile is linked for role Farmer
+    let farmerId = user.Farmer_ID || null;
+    if (user.User_Role === 'Farmer' && !farmerId) {
+      try {
+        const derivedPhone = '9' + String(user.User_ID).padStart(9, '0');
+        let farmerRecord = await FarmerRepository.findByPhone(derivedPhone);
+        if (!farmerRecord) {
+          const derivedName = user.Full_Name || googleName;
+          const derivedAadhar = '9' + String(user.User_ID).padStart(11, '0');
+          farmerId = await FarmerRepository.create({
+            Name: derivedName,
+            Phone: derivedPhone,
+            Aadhar_No: derivedAadhar,
+            UPI_ID: `${user.Username}@upi`,
+            Village: 'Mandi Area'
+          });
+        } else {
+          farmerId = farmerRecord.Farmer_ID;
+        }
+        await UserRepository.linkFarmer(user.User_ID, farmerId);
+      } catch (e) {
+        // Safe fallback
+      }
+    }
+
+    // 6. Issue AgriSlot signed JWT
     const token = jwt.sign(
       {
         userId: user.User_ID,
@@ -399,7 +393,6 @@ const AuthService = {
         email: googleEmail,
         name: user.Full_Name || googleName,
         role: user.User_Role || 'Farmer',
-        farmerId: user.Farmer_ID || null,
         provider: 'google'
       },
       env.JWT_SECRET,
@@ -415,7 +408,7 @@ const AuthService = {
         email: googleEmail,
         avatar: user.Avatar_Url || googleAvatar,
         role: user.User_Role || 'Farmer',
-        farmerId: user.Farmer_ID || null,
+        farmerId: farmerId || user.Farmer_ID || null,
         provider: 'google'
       }
     };

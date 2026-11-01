@@ -12,7 +12,7 @@ const createBookingSchema = z.preprocess((val) => {
   }
   return val;
 }, z.object({
-  Farmer_ID: z.number().int().positive('Farmer ID must be a positive integer'),
+  Farmer_ID: z.number().int().positive('Farmer ID must be a positive integer').optional(),
   Slot_ID: z.number().int().positive('Slot ID must be a positive integer'),
   Produce_ID: z.number().int().positive('Produce ID must be a positive integer'),
   Estimated_Weight_Tons: z.number().positive('Estimated weight must be greater than 0 tons').max(500, 'Weight exceeds single slot transaction limit')

@@ -22,13 +22,13 @@ export default function SmsNotificationModal({ booking, onClose, onOpenGatePass 
 
   if (!booking) return null;
 
-  const token = booking.Token_Number || booking.Gate_Pass_Token || 'AG-T001';
-  const farmerName = booking.Farmer_Name || 'Ramesh Patel';
-  const phone = booking.Farmer_Phone || booking.Phone || '9000000001';
-  const produce = booking.Produce_Name || 'Lokwan Sharbati Wheat';
-  const weight = booking.Estimated_Weight_Tons || 10.0;
-  const mandi = booking.Mandi_Name || 'Surat APMC Mandi';
-  const village = booking.Village || 'Olpad';
+  const token = booking.Token_Number || booking.Gate_Pass_Token || 'N/A';
+  const farmerName = booking.Farmer_Name || 'Registered Farmer';
+  const phone = booking.Farmer_Phone || booking.Phone || 'N/A';
+  const produce = booking.Produce_Name || 'Agricultural Produce';
+  const weight = booking.Estimated_Weight_Tons || 0.0;
+  const mandi = booking.Mandi_Name || 'APMC Mandi';
+  const village = booking.Village || 'Local';
   const slotDate = booking.Slot_Date ? String(booking.Slot_Date).slice(0, 10) : '2026-10-25';
   const slotTime = booking.Start_Time && booking.End_Time 
     ? `${booking.Start_Time.slice(0, 5)} - ${booking.End_Time.slice(0, 5)}`

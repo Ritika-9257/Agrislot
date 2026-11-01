@@ -3,6 +3,7 @@ const BookingRepository = require('../repositories/booking.repository');
 const SlotRepository = require('../repositories/slot.repository');
 const FarmerRepository = require('../repositories/farmer.repository');
 const ProduceRepository = require('../repositories/produce.repository');
+const UserRepository = require('../repositories/user.repository');
 const { generateToken } = require('../utils/tokenGenerator');
 const { AppError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
@@ -12,17 +13,59 @@ const NotificationService = require('./notification.service');
 const BookingService = {
   /**
    * Concurrency-safe atomic booking creation with row-level locking
+   * One farmer account represents one farmer identity.
    */
-  async createBooking({ Farmer_ID, Slot_ID, Produce_ID, Estimated_Weight_Tons }) {
+  async createBooking({ Farmer_ID, Slot_ID, Produce_ID, Estimated_Weight_Tons }, authUser = null) {
     const requestedWeight = parseFloat(Estimated_Weight_Tons);
     if (isNaN(requestedWeight) || requestedWeight <= 0) {
       throw new AppError('Estimated weight must be a positive number', 400, 'INVALID_WEIGHT');
     }
 
-    // 1. Verify existence of Farmer and Produce before starting connection transaction
-    const farmer = await FarmerRepository.findById(Farmer_ID);
+    // 1. Authoritative Farmer Identity Resolution
+    let resolvedFarmerId = null;
+    if (authUser && authUser.userId) {
+      const user = await UserRepository.findById(authUser.userId);
+      if (!user) {
+        throw new AppError('Authenticated user account not found', 401, 'USER_NOT_FOUND');
+      }
+
+      if (user.User_Role === 'Farmer' || user.Farmer_ID) {
+        if (user.Farmer_ID) {
+          resolvedFarmerId = user.Farmer_ID;
+        } else {
+          const derivedName = user.Full_Name || user.Username;
+          const derivedPhone = '9' + String(user.User_ID).padStart(9, '0');
+          const derivedAadhar = '9' + String(user.User_ID).padStart(11, '0');
+          let farmerRecord = await FarmerRepository.findByPhone(derivedPhone);
+          if (!farmerRecord) {
+            const newId = await FarmerRepository.create({
+              Name: derivedName,
+              Phone: derivedPhone,
+              Aadhar_No: derivedAadhar,
+              UPI_ID: `${user.Username}@upi`,
+              Village: 'Mandi Area'
+            });
+            resolvedFarmerId = newId;
+          } else {
+            resolvedFarmerId = farmerRecord.Farmer_ID;
+          }
+          await UserRepository.linkFarmer(user.User_ID, resolvedFarmerId);
+        }
+      } else if (user.User_Role === 'Admin') {
+        resolvedFarmerId = Farmer_ID || user.Farmer_ID || 1;
+      }
+    } else {
+      resolvedFarmerId = Farmer_ID;
+    }
+
+    if (!resolvedFarmerId) {
+      throw new AppError('Farmer identity could not be resolved. Please log in.', 400, 'FARMER_REQUIRED');
+    }
+
+    // 2. Verify existence of Farmer and Produce before starting connection transaction
+    const farmer = await FarmerRepository.findById(resolvedFarmerId);
     if (!farmer) {
-      throw new AppError(`Farmer with ID ${Farmer_ID} does not exist`, 404, 'FARMER_NOT_FOUND');
+      throw new AppError(`Farmer with ID ${resolvedFarmerId} does not exist`, 404, 'FARMER_NOT_FOUND');
     }
 
     const produce = await ProduceRepository.findById(Produce_ID);
@@ -76,7 +119,7 @@ const BookingService = {
         tokenNumber = generateToken('AG-T');
         try {
           bookingId = await BookingRepository.create({
-            Farmer_ID,
+            Farmer_ID: resolvedFarmerId,
             Slot_ID,
             Produce_ID,
             Estimated_Weight_Tons: requestedWeight,
@@ -104,7 +147,7 @@ const BookingService = {
       logger.info(`Booking created successfully: ID=${bookingId}, Token=${tokenNumber}, Weight=${requestedWeight}T`);
 
       NotificationService.notify({
-        farmerId: Farmer_ID,
+        farmerId: resolvedFarmerId,
         title: `Gate-Pass ${tokenNumber} Confirmed`,
         message: `Arrival window reserved for ${requestedWeight}T ${produce.Produce_Name}. Gate-pass token: ${tokenNumber}`,
         type: 'BOOKING_CONFIRMED',
@@ -117,7 +160,7 @@ const BookingService = {
         tokenNumber,
         bookingStatus: 'Confirmed',
         estimatedWeightTons: requestedWeight,
-        farmerId: Farmer_ID,
+        farmerId: resolvedFarmerId,
         farmerName: farmer.Name,
         slotId: Slot_ID,
         slotDate: slotDateStr,

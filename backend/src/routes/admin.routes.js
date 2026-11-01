@@ -23,6 +23,7 @@ router.get('/dashboard', AdminController.getDashboard);
 router.get('/users', AdminController.getAllUsers);
 router.get('/users/:id', AdminController.getUserById);
 router.patch('/users/:id/role', requireActiveRole('Admin'), AdminController.updateUserRole);
+router.post('/users/assign-role', requireActiveRole('Admin'), AdminController.assignUserRole);
 
 // Audit History (Protected, read-only audit records)
 router.get('/audit-logs', AdminController.getAuditLogs);
