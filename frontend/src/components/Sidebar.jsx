@@ -54,7 +54,6 @@ function SidebarContent() {
       { href: '/admin?tab=bookings', id: 'bookings', label: 'Booking Management', icon: CalendarCheck, badge: 'BOOKINGS' },
       { href: '/admin?tab=slots', id: 'slots', label: 'Slot Capacity Manager', icon: Layers, badge: 'SLOTS' },
       { href: '/admin?tab=farmers', id: 'farmers', label: 'Farmer Master Directory', icon: Tractor, badge: 'FARMERS' },
-      { href: '/admin?tab=analysis', id: 'analysis', label: 'Database & Reports', icon: BarChart3, badge: 'DBMS' },
       { href: '/admin?tab=access', id: 'access', label: 'Manage Roles (RBAC)', icon: Users, badge: 'ACCESS' },
     ];
   } else if (user?.role === 'Mandi_Officer') {

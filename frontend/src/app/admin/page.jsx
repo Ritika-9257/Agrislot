@@ -133,17 +133,16 @@ function AdminPortalContent() {
   const [selectedRoleForEmail, setSelectedRoleForEmail] = useState('Admin');
   const [emailPromoting, setEmailPromoting] = useState(false);
 
-  // Analysis / DBMS State
-  const [analysisSubTab, setAnalysisSubTab] = useState('overview'); // 'overview'|'flow'|'capacity'|'status'|'produce'|'mandi'|'farmers'|'transactions'|'dbops'|'audit'
-  const [dbStats, setDbStats] = useState(null);
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [transactions, setTransactions] = useState([]);
 
   // Sync token from AuthContext or localStorage
   const activeAuthToken = contextToken || (typeof window !== 'undefined' ? localStorage.getItem('agrislot_token') || localStorage.getItem('agrislot_admin_token') : '');
 
   // Load initial data
   useEffect(() => {
+    if (activeTab === 'analysis' || activeTab === 'dbms') {
+      setActiveTab('overview');
+      return;
+    }
     if (isOfficer && ['access', 'users', 'analysis', 'dbms', 'slots', 'farmers'].includes(activeTab)) {
       setActiveTab('verify');
       return;
@@ -157,9 +156,6 @@ function AdminPortalContent() {
     }
     if (activeTab === 'farmers' && !isOfficer) {
       loadFarmers();
-    }
-    if (activeTab === 'analysis' && !isOfficer) {
-      loadAnalysisData();
     }
   }, [activeTab, isOfficer]);
 
@@ -359,27 +355,6 @@ function AdminPortalContent() {
     }
   };
 
-  // Load DBMS Analysis Data
-  const loadAnalysisData = async () => {
-    try {
-      const [statsRes, auditRes, txnRes] = await Promise.allSettled([
-        AgriSlotAPI.getStatistics(),
-        AgriSlotAPI.getAuditLogs(activeAuthToken),
-        AgriSlotAPI.getTransactions()
-      ]);
-      if (statsRes.status === 'fulfilled' && statsRes.value?.data) {
-        setDbStats(statsRes.value.data);
-      }
-      if (auditRes.status === 'fulfilled' && auditRes.value?.data) {
-        setAuditLogs(auditRes.value.data);
-      }
-      if (txnRes.status === 'fulfilled' && txnRes.value?.data) {
-        setTransactions(txnRes.value.data);
-      }
-    } catch {
-      // Ignore
-    }
-  };
 
   // Search Token for Check-In
   const handleLookupToken = async (e) => {
@@ -664,7 +639,6 @@ function AdminPortalContent() {
             {isBookingModule && 'Booking Management & Lifecycle Archive'}
             {activeTab === 'slots' && 'Slot Capacity & Hybrid Quota Manager'}
             {activeTab === 'farmers' && 'Farmer Master Directory & Profiles'}
-            {activeTab === 'analysis' && 'DBMS Analytics, Views & Audit Reports'}
             {activeTab === 'access' && 'User Access & Role-Based Permissions (RBAC)'}
           </h1>
           <p className="text-xs text-mint-foam mt-1">
@@ -673,7 +647,6 @@ function AdminPortalContent() {
             {isBookingModule && 'Query and inspect all APMC producer bookings, historical receipts, and cancellation reasons.'}
             {activeTab === 'slots' && 'Configure 5-farmer limits, 50-ton weight capacities, operational status, and reconcile counters.'}
             {activeTab === 'farmers' && 'Search and inspect registered farmers, land holdings, Aadhaar credentials, and booking histories.'}
-            {activeTab === 'analysis' && 'Execute stored procedures, query relational views, trace triggers, and audit application events.'}
             {activeTab === 'access' && 'Configure Admin, Mandi Officer, and Farmer privileges with self-demotion security safeguards.'}
           </p>
         </div>
@@ -2308,173 +2281,6 @@ function AdminPortalContent() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* SECTION J: DBMS & BOOKING ANALYSIS (10 DBMS TABS)                         */}
-      {/* ========================================================================= */}
-      {!isOfficer && activeTab === 'analysis' && (
-        <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-6">
-          <div className="border-b-2 border-gray-100 pb-3">
-            <span className="text-xs font-bold text-forest uppercase tracking-wider">DBMS Evaluation & Telemetry</span>
-            <h2 className="text-xl font-display font-black text-navy-border">
-              Database Analysis & Booking Flow
-            </h2>
-            <p className="text-xs text-gray-600 mt-1">
-              Metadata, foreign key relationships, stored procedures, triggers, capacity analytics and audit history.
-            </p>
-          </div>
-
-          {/* 10 Sub-Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-gray-200 pb-2">
-            {[
-              { id: 'overview', label: '1. DB Overview' },
-              { id: 'flow', label: '2. Booking Flow' },
-              { id: 'capacity', label: '3. Slot Capacity' },
-              { id: 'status', label: '4. Status Report' },
-              { id: 'produce', label: '5. Produce' },
-              { id: 'mandi', label: '6. Mandi' },
-              { id: 'farmers', label: '7. Farmers' },
-              { id: 'transactions', label: '8. Transactions' },
-              { id: 'dbops', label: '9. Procedures & Triggers' },
-              { id: 'audit', label: '10. Audit History' },
-            ].map(st => (
-              <button
-                key={st.id}
-                onClick={() => setAnalysisSubTab(st.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  analysisSubTab === st.id
-                    ? 'bg-forest text-white shadow-sm'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {st.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Sub-Tab 1: DB Overview */}
-          {analysisSubTab === 'overview' && (
-            <div className="space-y-4">
-              <h3 className="font-bold text-sm text-navy-border">MySQL Relational Tables & Live Record Counts</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                {[
-                  { name: 'Farmers', count: dbStats?.farmers || 25, role: 'Farmer Profiles & Contact' },
-                  { name: 'Mandis', count: dbStats?.mandis || 15, role: 'APMC Market Yards' },
-                  { name: 'Produce', count: dbStats?.produce || 12, role: 'Crops Catalog' },
-                  { name: 'Slots', count: dbStats?.slots || 25, role: '20-Min Capacity Windows' },
-                  { name: 'Bookings', count: dbStats?.bookings || allBookings.length, role: 'Reservation Tokens' },
-                  { name: 'User_Login', count: users.length || 6, role: 'Authentication & Roles' },
-                  { name: 'Transactions', count: transactions.length || 25, role: 'Settlements & Weights' },
-                  { name: 'Audit_Log', count: auditLogs.length || 10, role: 'Automated Triggers Trail' }
-                ].map(tbl => (
-                  <div key={tbl.name} className="p-3 bg-mint-foam/50 rounded-xl border border-emerald-200">
-                    <div className="font-mono font-bold text-forest">{tbl.name}</div>
-                    <div className="text-xl font-black text-navy-border mt-1">{tbl.count} Rows</div>
-                    <div className="text-[10px] text-gray-500 mt-0.5">{tbl.role}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Sub-Tab 2: Booking Flow */}
-          {analysisSubTab === 'flow' && (
-            <div className="space-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200 text-xs">
-              <h3 className="font-bold text-sm text-navy-border">Entity Relationship & Booking Lifecycle</h3>
-              <div className="p-3 bg-white rounded-lg border border-gray-200 font-mono space-y-1.5 leading-relaxed">
-                <div>1. <span className="text-purple-700 font-bold">User_Login</span> (User_ID, Email, Role) &rarr; <span className="font-bold">1:1 FK</span> to <span className="text-forest font-bold">Farmers</span> (Farmer_ID)</div>
-                <div>2. <span className="text-forest font-bold">Farmers</span> &rarr; References <span className="text-blue-700 font-bold">Bookings</span> (Farmer_ID, Slot_ID, Produce_ID)</div>
-                <div>3. <span className="text-blue-700 font-bold">Bookings</span> &rarr; Atomically locks <span className="text-amber-700 font-bold">Slots</span> (SELECT ... FOR UPDATE)</div>
-                <div>4. Status Transition: <span className="font-bold text-amber-700">Confirmed</span> &rarr; <span className="font-bold text-sky-700">Checked-In</span> (Gate) &rarr; <span className="font-bold text-emerald-700">Completed</span></div>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-Tab 3: Slot Capacity */}
-          {analysisSubTab === 'capacity' && (
-            <div className="space-y-2 text-xs">
-              <h3 className="font-bold text-sm text-navy-border">Capacity Allocation Rule</h3>
-              <p className="text-gray-600">
-                Formula: <span className="font-mono font-bold text-forest">Remaining_Capacity = Max_Capacity_Tons - Booked_Capacity_Tons</span>.
-                Enforced using transactional row-level locks to prevent overselling.
-              </p>
-            </div>
-          )}
-
-          {/* Sub-Tab 4: Status Report */}
-          {analysisSubTab === 'status' && (
-            <div className="grid grid-cols-4 gap-3 text-xs">
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-center">
-                <div className="text-xl font-black text-amber-800">{upcomingBookings.length}</div>
-                <div className="text-[10px] font-bold uppercase mt-1">Confirmed</div>
-              </div>
-              <div className="p-3 bg-sky-50 rounded-xl border border-sky-200 text-center">
-                <div className="text-xl font-black text-sky-800">{inProcessBookings.length}</div>
-                <div className="text-[10px] font-bold uppercase mt-1">In Process</div>
-              </div>
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-center">
-                <div className="text-xl font-black text-emerald-800">{completedBookings.length}</div>
-                <div className="text-[10px] font-bold uppercase mt-1">Completed</div>
-              </div>
-              <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-center">
-                <div className="text-xl font-black text-rose-800">{cancelledBookings.length}</div>
-                <div className="text-[10px] font-bold uppercase mt-1">Cancelled</div>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-Tab 9: Database Operations */}
-          {analysisSubTab === 'dbops' && (
-            <div className="space-y-3 text-xs">
-              <h3 className="font-bold text-sm text-navy-border">Stored Procedures, Triggers & Views</h3>
-              <div className="space-y-2">
-                <div className="p-2.5 bg-gray-50 rounded-lg border font-mono">
-                  <span className="font-bold text-forest">Insert_Farmer</span>: Stored Procedure inserting into Farmers table
-                </div>
-                <div className="p-2.5 bg-gray-50 rounded-lg border font-mono">
-                  <span className="font-bold text-forest">Display_All_Farmers</span>: Explicit Cursor iterating over farmer records
-                </div>
-                <div className="p-2.5 bg-gray-50 rounded-lg border font-mono">
-                  <span className="font-bold text-forest">Total_Booking_Weight</span>: Stored Function calculating sum of weights
-                </div>
-                <div className="p-2.5 bg-gray-50 rounded-lg border font-mono">
-                  <span className="font-bold text-forest">trg_after_booking_update</span>: AFTER UPDATE Trigger writing to application_audit_log
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Sub-Tab 10: Audit History */}
-          {analysisSubTab === 'audit' && (
-            <div className="space-y-3">
-              <h3 className="font-bold text-sm text-navy-border">Application Audit Trail (Live from MySQL)</h3>
-              <div className="overflow-x-auto text-xs">
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className="border-b text-gray-400 font-mono text-[10px]">
-                      <th className="py-2">Table</th>
-                      <th className="py-2">Operation</th>
-                      <th className="py-2">Changed By</th>
-                      <th className="py-2">Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {auditLogs.slice(0, 10).map((log, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="py-2 font-mono">{log.table_name || 'Bookings'}</td>
-                        <td className="py-2 font-bold text-forest">{log.operation_type || 'UPDATE'}</td>
-                        <td className="py-2">{log.changed_by || 'system'}</td>
-                        <td className="py-2 text-gray-500">{log.created_at || 'Just now'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
         </div>
       )}
 
