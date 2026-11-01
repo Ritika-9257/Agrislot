@@ -44,6 +44,7 @@ function ProfileContent() {
   // Status & Feedback State
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState(null); // { type: 'success' | 'error', message: string }
+  const [welcomeDismissed, setWelcomeDismissed] = useState(false);
 
   // Initialize form fields from live user state
   useEffect(() => {
@@ -171,24 +172,32 @@ function ProfileContent() {
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-16">
       
-      {/* Welcome / Incomplete Profile Notice Banner */}
-      {(noticeParam === 'welcome' || (!isComplete && isFarmer)) && (
-        <div className="bg-amber-50 border-[2.5px] border-amber-500 rounded-bento p-5 shadow-bento animate-in fade-in duration-200">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-400 text-navy-border flex items-center justify-center font-bold text-2xl border border-navy-border shrink-0">
-              👋
+      {/* Warm Agricultural Welcome Banner */}
+      {!welcomeDismissed && (noticeParam === 'welcome' || (!isComplete && isFarmer)) && (
+        <div className="bg-amber-50/90 border-[2.5px] border-amber-500 rounded-bento p-5 shadow-bento animate-in fade-in duration-200 relative">
+          <button
+            type="button"
+            onClick={() => setWelcomeDismissed(true)}
+            className="absolute right-4 top-4 w-7 h-7 rounded-lg bg-white/80 hover:bg-white text-navy-border flex items-center justify-center border border-navy-border/30 text-xs font-bold transition-all hover:scale-105"
+            title="Dismiss welcome message"
+          >
+            ✕
+          </button>
+          <div className="flex items-start gap-4 pr-8">
+            <div className="w-12 h-12 rounded-2xl bg-saffron text-navy-border flex items-center justify-center font-bold text-2xl border-2 border-navy-border shadow-bento-sm shrink-0">
+              🌾
             </div>
             <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h2 className="font-display font-black text-base text-navy-border">
-                  {noticeParam === 'welcome' ? 'Welcome to AgriSlot!' : 'Action Required: Complete Profile'}
+              <div className="flex flex-wrap items-center gap-2 mb-1">
+                <h2 className="font-display font-black text-base sm:text-lg text-navy-border">
+                  Welcome to the AgriSlot Family!
                 </h2>
-                <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 text-[10px] font-mono font-bold">
-                  Kisan Onboarding
+                <span className="px-2.5 py-0.5 rounded-full bg-saffron/40 text-navy-border text-[10px] font-mono font-bold border border-navy-border/30">
+                  🌱 Kisan Mitra
                 </span>
               </div>
-              <p className="text-xs text-gray-700 font-mono mt-1 leading-relaxed">
-                Since you signed in through Google, please add your <strong>10-digit mobile number</strong> and <strong>village name</strong> below. This allows the APMC gatekeeper to send you real-time SMS entry gate passes and weighbridge payment receipts.
+              <p className="text-xs text-slate-700 font-medium leading-relaxed max-w-3xl">
+                We are glad to have you with us on Gujarat&apos;s smart agricultural marketplace. Manage your arrival slots with guaranteed entry, track fair digital weighing, and enjoy hassle-free direct mandi settlements for all your agricultural produce.
               </p>
             </div>
           </div>
