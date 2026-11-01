@@ -23,7 +23,7 @@ const env = {
 
   // Database SSL (for Managed Cloud MySQL: Aiven, DigitalOcean, AWS RDS, Railway, TiDB, etc.)
   DB_SSL: process.env.DB_SSL === 'true' || process.env.DB_SSL === '1',
-  DB_SSL_REJECT_UNAUTHORIZED: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+  DB_SSL_REJECT_UNAUTHORIZED: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false' || (process.env.DB_HOST && process.env.DB_HOST.includes('aivencloud.com') && !process.env.DB_SSL_CA && !process.env.DB_SSL_CA_PATH) ? false : true,
   DB_SSL_CA: process.env.DB_SSL_CA || null,
   DB_SSL_CA_PATH: process.env.DB_SSL_CA_PATH || null,
 
