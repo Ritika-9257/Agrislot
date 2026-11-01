@@ -163,7 +163,7 @@ function AdminPortalContent() {
   const loadBookings = async () => {
     setLoadingBookings(true);
     try {
-      const res = await AgriSlotAPI.getAdminBookings(activeAuthToken, { limit: 200 }).catch(() => null);
+      const res = await AgriSlotAPI.getAdminBookings(activeAuthToken, { limit: 500 }).catch(() => null);
       if (res?.data && Array.isArray(res.data)) {
         setAllBookings(res.data);
       } else {
@@ -344,7 +344,7 @@ function AdminPortalContent() {
   const loadFarmers = async () => {
     setLoadingFarmers(true);
     try {
-      const res = await AgriSlotAPI.getFarmers();
+      const res = await AgriSlotAPI.getFarmers({ limit: 500 });
       if (res?.data && Array.isArray(res.data)) {
         setFarmersList(res.data);
       }

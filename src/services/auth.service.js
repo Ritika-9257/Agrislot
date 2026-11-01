@@ -221,19 +221,19 @@ const AuthService = {
     });
 
     let farmerId = user.Farmer_ID;
-    if (user.User_Role === 'Farmer') {
+    if (user.User_Role === 'Farmer' || village) {
       if (farmerId) {
         await FarmerRepository.update(farmerId, {
-          Name: name?.trim(),
-          Phone: phone,
-          Village: village?.trim(),
+          Name: name?.trim() || user.Full_Name,
+          Phone: phone || user.Phone,
+          Village: village?.trim() || 'Gujarat',
           UPI_ID: upiId?.trim()
         });
       } else {
         const derivedAadhar = '9' + String(user.User_ID).padStart(11, '0');
         farmerId = await FarmerRepository.create({
           Name: name?.trim() || user.Full_Name || user.Username,
-          Phone: phone || ('9' + String(user.User_ID).padStart(9, '0')),
+          Phone: phone || user.Phone || ('9' + String(user.User_ID).padStart(9, '0')),
           Aadhar_No: derivedAadhar,
           UPI_ID: upiId?.trim() || `${user.Username}@upi`,
           Village: village?.trim() || 'Gujarat'

@@ -207,7 +207,10 @@ export const AgriSlotAPI = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getFarmers: () => apiRequest('/farmers'),
+  getFarmers: (params = {}) => {
+    const q = new URLSearchParams({ limit: '500', ...params });
+    return apiRequest(`/farmers?${q.toString()}`);
+  },
   getFarmerById: (id) => apiRequest(`/farmers/${id}`),
   getFarmerBookings: (id, token) => {
     const headers = {};

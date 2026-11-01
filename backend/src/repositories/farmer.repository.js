@@ -29,7 +29,7 @@ const FarmerRepository = {
     return rows[0] || null;
   },
 
-  async findAll({ page = 1, limit = 20, search } = {}) {
+  async findAll({ page = 1, limit = 100, search } = {}) {
     let whereSql = '1=1';
     const params = [];
 
@@ -40,7 +40,7 @@ const FarmerRepository = {
     }
 
     const safePage = Math.max(1, parseInt(page, 10) || 1);
-    const safeLimit = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
+    const safeLimit = Math.min(Math.max(1, parseInt(limit, 10) || 100), 500);
     const offset = (safePage - 1) * safeLimit;
 
     let total = 0;
@@ -53,10 +53,10 @@ const FarmerRepository = {
     }
 
     const selectSql = `
-      SELECT Farmer_ID, Name, Phone, Village 
+      SELECT Farmer_ID, Name, Phone, Village, UPI_ID 
       FROM Farmers 
       WHERE ${whereSql} 
-      ORDER BY Farmer_ID ASC 
+      ORDER BY Farmer_ID DESC 
       LIMIT ? OFFSET ?
     `;
     const [rows] = await db.query(selectSql, [...params, safeLimit, offset]);

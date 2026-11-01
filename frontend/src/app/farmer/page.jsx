@@ -319,6 +319,7 @@ function FarmerPortalContent() {
       }
 
       const payload = {
+        Farmer_ID: user?.farmerId || null,
         Slot_ID: selectedSlotId,
         Produce_ID: Number(selectedProduceId) || 1,
         Estimated_Weight_Tons: Number(quantityTons) || 5

@@ -51,8 +51,29 @@ const BookingService = {
           }
           await UserRepository.linkFarmer(user.User_ID, resolvedFarmerId);
         }
-      } else if (user.User_Role === 'Admin') {
-        resolvedFarmerId = Farmer_ID || user.Farmer_ID || 1;
+      } else if (user.User_Role === 'Admin' || user.User_Role === 'Mandi_Officer') {
+        if (user.Farmer_ID) {
+          resolvedFarmerId = user.Farmer_ID;
+        } else if (Farmer_ID) {
+          resolvedFarmerId = Farmer_ID;
+        } else {
+          const derivedName = user.Full_Name || user.Username;
+          const derivedPhone = user.Phone || ('9' + String(user.User_ID).padStart(9, '0'));
+          const derivedAadhar = '9' + String(user.User_ID).padStart(11, '0');
+          let farmerRecord = await FarmerRepository.findByPhone(derivedPhone);
+          if (!farmerRecord) {
+            resolvedFarmerId = await FarmerRepository.create({
+              Name: derivedName,
+              Phone: derivedPhone,
+              Aadhar_No: derivedAadhar,
+              UPI_ID: `${user.Username}@upi`,
+              Village: 'Mandi Area'
+            });
+          } else {
+            resolvedFarmerId = farmerRecord.Farmer_ID;
+          }
+          await UserRepository.linkFarmer(user.User_ID, resolvedFarmerId);
+        }
       }
     } else {
       resolvedFarmerId = Farmer_ID;
