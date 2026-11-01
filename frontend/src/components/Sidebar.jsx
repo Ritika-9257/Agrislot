@@ -15,7 +15,8 @@ import {
   LogIn,
   CheckCircle2,
   CalendarCheck,
-  Users
+  Users,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
