@@ -146,8 +146,13 @@ export async function apiRequest(endpoint, options = {}) {
     ...(options.headers || {}),
   };
 
+  let body = options.body;
+  if (body !== undefined && body !== null && typeof body === 'object' && !(body instanceof FormData) && !(typeof body === 'string')) {
+    body = JSON.stringify(body);
+  }
+
   try {
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers, body });
     const data = await response.json();
 
     if (!response.ok && !data.success) {
@@ -219,6 +224,29 @@ export const AgriSlotAPI = {
     return apiRequest(`/slots?${q.toString()}`);
   },
   getSlotUtilization: () => apiRequest('/slots/utilization'),
+  getSlotBookings: (slotId, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/admin/slots/${slotId}/bookings`, { headers });
+  },
+  updateSlotLimits: (slotId, data, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/admin/slots/${slotId}/limits`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(data),
+    });
+  },
+  reconcileSlots: (slotId, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const endpoint = slotId ? `/admin/slots/${slotId}/reconcile` : '/admin/slots/reconcile-all';
+    return apiRequest(endpoint, {
+      method: 'POST',
+      headers,
+    });
+  },
 
   // Bookings
   createBooking: (data, token) => {
@@ -275,11 +303,11 @@ export const AgriSlotAPI = {
       headers: { Authorization: `Bearer ${token}` },
       body: JSON.stringify({ role })
     }),
-  assignUserRole: ({ email, username, userId, role }, token) =>
+  assignUserRole: ({ email, username, identifier, userId, role }, token) =>
     apiRequest('/admin/users/assign-role', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ email, username, userId, role })
+      body: JSON.stringify({ email, username, identifier, userId, role })
     }),
   getAdminBookings: (token, filters = {}) => {
     const q = new URLSearchParams();
@@ -352,10 +380,20 @@ export const AgriSlotAPI = {
     const qs = q.toString();
     return apiRequest(`/notifications${qs ? `?${qs}` : ''}`);
   },
-  markNotificationRead: (id) =>
-    apiRequest(`/notifications/${id}/read`, { method: 'PATCH' }),
-  markAllNotificationsRead: () =>
-    apiRequest('/notifications/read-all', { method: 'PATCH' }),
+  markNotificationRead: (id, token = null) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/notifications/${id}/read`, { method: 'PATCH', headers });
+  },
+  markAllNotificationsRead: (payload = {}, token = null) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest('/notifications/read-all', {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
+  },
 
   // CSV Report Exports (Safe RFC 4180)
   getExportCsvUrl: (type, params) => {

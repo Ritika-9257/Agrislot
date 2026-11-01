@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { 
   Menu, 
   X, 
@@ -15,13 +15,16 @@ import {
   LogIn,
   CheckCircle2,
   CalendarCheck,
-  Users
+  Users,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
 
-export default function Sidebar() {
+function SidebarContent() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams ? searchParams.get('tab') : null;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [backendOnline, setBackendOnline] = useState(null);
   const { user, openLogin } = useAuth();
@@ -42,32 +45,76 @@ export default function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
-  // Role-aware navigation: Admins, normal users (Farmers), and public visitors
-  const isPrivileged = user?.role === 'Admin' || user?.role === 'Mandi_Officer';
-
+  // Modular Role-Based Navigation: Independent modules in left sidebar
   let navLinks = [];
-  if (isPrivileged) {
+  if (user?.role === 'Admin') {
     navLinks = [
-      { href: '/admin', label: 'Mandi Officer Desk', icon: ShieldCheck, badge: 'OFFICER' },
-      { href: '/admin?tab=users', label: 'Admin & User Access', icon: Users, badge: 'RBAC' },
-      { href: '/farmer', label: 'Farmer Slot View', icon: Tractor, badge: 'SLOTS' },
-      { href: '/analytics', label: 'Mandi Reports & Stats', icon: BarChart3 },
-      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
+      { href: '/admin', id: 'overview', label: 'Admin Dashboard', icon: ShieldCheck, badge: 'ADMIN' },
+      { href: '/admin?tab=verify', id: 'gate', label: 'Gate Operations', icon: QrCode, badge: 'GATE' },
+      { href: '/admin?tab=bookings', id: 'bookings', label: 'Booking Management', icon: CalendarCheck, badge: 'BOOKINGS' },
+      { href: '/admin?tab=slots', id: 'slots', label: 'Slot Capacity Manager', icon: Layers, badge: 'SLOTS' },
+      { href: '/admin?tab=farmers', id: 'farmers', label: 'Farmer Master Directory', icon: Tractor, badge: 'FARMERS' },
+      { href: '/admin?tab=analysis', id: 'analysis', label: 'Database & Reports', icon: BarChart3, badge: 'DBMS' },
+      { href: '/admin?tab=access', id: 'access', label: 'Manage Roles (RBAC)', icon: Users, badge: 'ACCESS' },
+    ];
+  } else if (user?.role === 'Mandi_Officer') {
+    navLinks = [
+      { href: '/admin?tab=verify', id: 'gate', label: 'Gate Operations', icon: QrCode, badge: 'OFFICER' },
+      { href: '/admin?tab=bookings', id: 'bookings', label: 'Booking Management', icon: CalendarCheck, badge: 'BOOKINGS' },
     ];
   } else if (user?.role === 'Farmer') {
     navLinks = [
-      { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'SLOTS' },
-      { href: '/farmer?tab=history', label: 'My Bookings & Passes', icon: CalendarCheck, badge: 'PASSES' },
-      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
+      { href: '/farmer', id: 'farmer-book', label: 'Book Arrival Slot', icon: Tractor, badge: 'SLOTS' },
+      { href: '/farmer?tab=history', id: 'farmer-history', label: 'My Bookings & Passes', icon: CalendarCheck, badge: 'PASSES' },
     ];
   } else {
-    // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin links)
+    // Unauthenticated visitor: Pure Farmer / Visitor links (Zero Admin / Officer links)
     navLinks = [
-      { href: '/', label: 'Home Portal', icon: Layers },
-      { href: '/farmer', label: 'Book Arrival Slot', icon: Tractor, badge: 'FARMER' },
-      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
+      { href: '/', id: 'home', label: 'Home Portal', icon: Layers },
+      { href: '/farmer', id: 'farmer-book', label: 'Book Arrival Slot', icon: Tractor, badge: 'FARMER' },
     ];
   }
+
+  const isLinkActive = (link) => {
+    if (!link) return false;
+    const [pathPart] = link.href.split('?');
+    if (pathname !== pathPart) return false;
+
+    if (pathname === '/admin') {
+      const activeTabNorm = (currentTab || (user?.role === 'Mandi_Officer' ? 'verify' : 'overview')).toLowerCase();
+
+      if (link.id === 'overview') {
+        return activeTabNorm === 'overview';
+      }
+      if (link.id === 'gate') {
+        return ['verify', 'active', 'confirmed', 'gate', 'inprocess', 'expected'].includes(activeTabNorm);
+      }
+      if (link.id === 'bookings') {
+        return ['bookings', 'completed', 'cancelled', 'history', 'done'].includes(activeTabNorm);
+      }
+      if (link.id === 'slots') {
+        return ['slots', 'capacity'].includes(activeTabNorm);
+      }
+      if (link.id === 'farmers') {
+        return ['farmers', 'directory'].includes(activeTabNorm);
+      }
+      if (link.id === 'analysis') {
+        return ['analysis', 'dbms', 'reports'].includes(activeTabNorm);
+      }
+      if (link.id === 'access') {
+        return ['access', 'users', 'rbac'].includes(activeTabNorm);
+      }
+    }
+
+    if (pathname === '/farmer') {
+      if (link.id === 'farmer-history') {
+        return currentTab === 'history';
+      }
+      return !currentTab || currentTab === 'book';
+    }
+
+    return true;
+  };
 
   return (
     <>
@@ -134,7 +181,7 @@ export default function Sidebar() {
             <nav className="space-y-1.5">
               {navLinks.map((link) => {
                 const Icon = link.icon;
-                const isActive = pathname === link.href;
+                const isActive = isLinkActive(link);
                 return (
                   <Link
                     key={link.href}
@@ -161,19 +208,20 @@ export default function Sidebar() {
             </nav>
           </div>
 
-          {/* Practical Mandi Service Status Widget */}
-          <div className="bg-lilac p-3.5 rounded-bento-sm border-[2px] border-navy-border shadow-bento-sm space-y-1">
+          {/* APMC Farmer Helpdesk & Gate Hotline */}
+          <div className="bg-mint-foam/80 p-3.5 rounded-bento-sm border-[2px] border-navy-border shadow-bento-sm space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[10px] font-bold text-lilac-dark uppercase">MANDI OPERATIONAL</span>
-              <span
-                className={`w-2 h-2 rounded-full pulse-dot ${
-                  backendOnline === true ? 'bg-emerald-500' : 'bg-amber-400'
-                }`}
-              />
+              <span className="font-mono text-[10px] font-bold text-forest uppercase tracking-wider">APMC HELPDESK</span>
+              <span className="px-1.5 py-0.5 rounded text-[8.5px] font-mono font-black bg-forest text-white border border-navy-border">
+                24x7 TOLL-FREE
+              </span>
             </div>
-            <div className="font-bold text-xs text-navy-border">SURAT &amp; NASHIK HUBS</div>
-            <div className="text-[11px] text-slate-600 flex items-center gap-1 font-mono font-medium">
-              Daily Slots Open • Fast Clearance
+            <div className="font-display font-black text-xs text-navy-border flex items-center gap-1.5">
+              <span>📞</span>
+              <span>1800-233-0199</span>
+            </div>
+            <div className="text-[10.5px] text-slate-600 font-mono font-medium leading-tight">
+              Kisan Helpline &amp; Gate Assistance
             </div>
           </div>
         </div>
@@ -222,5 +270,13 @@ export default function Sidebar() {
         </div>
       </aside>
     </>
+  );
+}
+
+export default function Sidebar() {
+  return (
+    <Suspense fallback={<aside className="fixed left-0 top-0 h-full w-64 bg-white border-r-[2.5px] border-navy-border z-50 hidden lg:block" />}>
+      <SidebarContent />
+    </Suspense>
   );
 }

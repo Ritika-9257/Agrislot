@@ -34,9 +34,9 @@ loadEnv(path.resolve(__dirname, '../backend/.env'));
 
 const DB_CONFIG = {
   host: process.env.DB_HOST || '127.0.0.1',
-  port: parseInt(process.env.DB_PORT, 10) || 3306,
+  port: parseInt(process.env.DB_PORT, 10) || 3307,
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '6125',
+  password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'agrislot',
 };
 
@@ -50,7 +50,9 @@ const REQUIRED_TABLES = [
   'Traders',
   'Transactions',
   'User_Login',
-  'application_audit_log'
+  'application_audit_log',
+  'notifications',
+  'Farmer_Daily_Reservations'
 ];
 
 const REQUIRED_ROUTINES = [
@@ -62,7 +64,8 @@ const REQUIRED_ROUTINES = [
   'Display_All_Farmers',
   'Display_First_Five_Farmers',
   'Search_Farmers_Paginated',
-  'Search_Farmers_Filtered'
+  'Search_Farmers_Filtered',
+  'Reconcile_Slot_Counters'
 ];
 
 const REQUIRED_TRIGGERS = [
@@ -124,7 +127,7 @@ async function runDiagnostics() {
       try {
         const [rows] = await connection.query(`SELECT COUNT(*) AS count FROM \`${table}\``);
         const count = rows[0]?.count || 0;
-        const pass = (table === 'User_Login' || table === 'application_audit_log') ? count >= 1 : count >= 25;
+        const pass = (table === 'User_Login' || table === 'application_audit_log' || table === 'notifications') ? count >= 1 : count >= 25;
         const icon = pass ? '✓' : '⚠';
         console.log(`    ${icon} ${table.padEnd(24)} : ${String(count).padStart(3)} records ${pass ? '(OK)' : '(Needs Seeding)'}`);
         if (!pass && table !== 'application_audit_log') allTablesPassed = false;
@@ -186,8 +189,8 @@ async function runDiagnostics() {
 
   } catch (err) {
     console.log(`\n  ✗ MySQL Connection Failed: ${err.message}`);
-    console.log('    • Tip: Check if MySQL is running (mysql -u root -p6125)');
-    console.log('    • Tip: Make sure DB_PASSWORD=6125 in .env\n');
+    console.log('    • Tip: Check if MySQL is running (mysql -u root -p)');
+    console.log('    • Tip: Make sure DB_PASSWORD is configured properly in .env\n');
   } finally {
     if (connection) await connection.end();
   }

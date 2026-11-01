@@ -36,30 +36,54 @@ export default function Header({ title }) {
   }, []);
 
   // Load In-App Notifications
-  useEffect(() => {
-    async function loadNotifications() {
-      try {
-        const res = await AgriSlotAPI.getNotifications({
-          farmerId: user?.farmerId,
-          userId: user?.userId
-        });
-        if (res.data) {
-          setNotifications(res.data);
-          setUnreadCount(res.meta?.unreadCount || res.data.filter(n => !n.Is_Read).length);
-        }
-      } catch {
-        // Fallback or offline ignore
+  const loadNotifications = React.useCallback(async () => {
+    try {
+      if (!user) {
+        setNotifications([]);
+        setUnreadCount(0);
+        return;
       }
+      const res = await AgriSlotAPI.getNotifications({
+        farmerId: user.farmerId,
+        userId: user.userId
+      });
+      if (res && res.data) {
+        setNotifications(res.data);
+        setUnreadCount(res.meta?.unreadCount !== undefined ? res.meta.unreadCount : res.data.filter(n => !n.Is_Read).length);
+      }
+    } catch {
+      // Fallback or offline ignore
     }
-    loadNotifications();
   }, [user]);
+
+  useEffect(() => {
+    loadNotifications();
+
+    // Automatic polling every 5 seconds for live status updates
+    const pollInterval = setInterval(loadNotifications, 5000);
+
+    const handleRefreshEvent = () => loadNotifications();
+    window.addEventListener('agrislot_refresh_notifications', handleRefreshEvent);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener('agrislot_refresh_notifications', handleRefreshEvent);
+    };
+  }, [loadNotifications]);
 
   const handleMarkAllRead = async () => {
     try {
-      await AgriSlotAPI.markAllNotificationsRead();
       setNotifications(prev => prev.map(n => ({ ...n, Is_Read: 1 })));
       setUnreadCount(0);
-    } catch {
+      await AgriSlotAPI.markAllNotificationsRead(
+        {
+          farmerId: user?.farmerId,
+          userId: user?.userId
+        },
+        user?.token
+      );
+    } catch (err) {
+      console.error('Failed to mark all notifications read:', err);
       setNotifications(prev => prev.map(n => ({ ...n, Is_Read: 1 })));
       setUnreadCount(0);
     }
@@ -67,10 +91,11 @@ export default function Header({ title }) {
 
   const handleMarkSingleRead = async (id) => {
     try {
-      await AgriSlotAPI.markNotificationRead(id);
       setNotifications(prev => prev.map(n => n.Notification_ID === id ? { ...n, Is_Read: 1 } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch {
+      await AgriSlotAPI.markNotificationRead(id, user?.token);
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
       setNotifications(prev => prev.map(n => n.Notification_ID === id ? { ...n, Is_Read: 1 } : n));
       setUnreadCount(prev => Math.max(0, prev - 1));
     }
@@ -113,7 +138,11 @@ export default function Header({ title }) {
           {/* In-App Notifications Bell Dropdown */}
           <div className="relative">
             <button
-              onClick={() => setNotifOpen(!notifOpen)}
+              onClick={() => {
+                const next = !notifOpen;
+                setNotifOpen(next);
+                if (next) loadNotifications();
+              }}
               className="relative w-9 h-9 rounded-full bg-white hover:bg-mint-foam border-[2px] border-navy-border flex items-center justify-center shadow-bento-sm active:translate-y-0.5 transition-all text-navy-border"
               title="Notifications"
               aria-label="In-App Notifications"

@@ -1,4 +1,5 @@
 const SlotRepository = require('../repositories/slot.repository');
+const AuditService = require('./audit.service');
 const { AppError } = require('../middleware/errorHandler');
 
 const SlotService = {
@@ -18,35 +19,60 @@ const SlotService = {
     return SlotRepository.getUtilizationSummary();
   },
 
-  async createSlot(slotData) {
-    if (!slotData.Mandi_ID || !slotData.Slot_Date || !slotData.Start_Time || !slotData.End_Time) {
-      throw new AppError('Mandi_ID, Slot_Date, Start_Time, and End_Time are required', 400, 'VALIDATION_ERROR');
+  async getSlotBookings(slotId) {
+    const slot = await SlotRepository.findById(slotId);
+    if (!slot) {
+      throw new AppError(`Slot with ID ${slotId} not found`, 404, 'SLOT_NOT_FOUND');
     }
-    return SlotRepository.create(slotData);
+    const bookings = await SlotRepository.findBookingsForSlot(slotId);
+    return {
+      slot,
+      bookings
+    };
   },
 
-  async updateSlot(slotId, updateData) {
+  async updateSlotLimits(slotId, { maxBookings, maxCapacityTons, status }, requestingUser = null) {
     const existing = await SlotRepository.findById(slotId);
     if (!existing) {
       throw new AppError(`Slot with ID ${slotId} not found`, 404, 'SLOT_NOT_FOUND');
     }
-    return SlotRepository.update(slotId, updateData);
-  },
 
-  async deleteSlot(slotId) {
-    const existing = await SlotRepository.findById(slotId);
-    if (!existing) {
-      throw new AppError(`Slot with ID ${slotId} not found`, 404, 'SLOT_NOT_FOUND');
-    }
     try {
-      const deleted = await SlotRepository.delete(slotId);
-      return deleted;
+      const updated = await SlotRepository.updateSlotLimits(slotId, {
+        maxBookings,
+        maxCapacityTons,
+        status
+      });
+
+      // Audit trail
+      AuditService.logAudit({
+        tableName: 'Slots',
+        operationType: 'UPDATE_LIMITS',
+        recordId: slotId,
+        oldData: {
+          Max_Bookings: existing.Max_Bookings,
+          Max_Capacity_Tons: existing.Max_Capacity_Tons,
+          Slot_Status: existing.Slot_Status
+        },
+        newData: {
+          Max_Bookings: updated.Max_Bookings,
+          Max_Capacity_Tons: updated.Max_Capacity_Tons,
+          Slot_Status: updated.Slot_Status
+        },
+        changedBy: requestingUser ? (requestingUser.username || requestingUser.role) : 'system'
+      });
+
+      return updated;
     } catch (err) {
-      if (err.code === 'ER_ROW_IS_REFERENCED_2') {
-        throw new AppError('Cannot delete slot because it has existing bookings associated with it', 400, 'SLOT_HAS_BOOKINGS');
+      if (err.code === 'CANNOT_REDUCE_BELOW_BOOKED_COUNT' || err.code === 'CANNOT_REDUCE_BELOW_BOOKED_WEIGHT') {
+        throw new AppError(err.message, 400, err.code);
       }
       throw err;
     }
+  },
+
+  async reconcileSlot(slotId = null) {
+    return SlotRepository.reconcileSlot(slotId);
   }
 };
 

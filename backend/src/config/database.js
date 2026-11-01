@@ -19,7 +19,7 @@ function getSslConfig(config = env) {
   }
 
   const ssl = {
-    rejectUnauthorized: true
+    rejectUnauthorized: config.DB_SSL_REJECT_UNAUTHORIZED !== false
   };
 
   if (config.DB_SSL_CA && typeof config.DB_SSL_CA === 'string' && config.DB_SSL_CA.trim().length > 0) {

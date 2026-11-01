@@ -95,26 +95,33 @@ const AdminController = {
 
   async assignUserRole(req, res, next) {
     try {
-      const { email, username, userId, role } = req.body;
+      const { email, username, identifier: rawId, userId, role } = req.body;
       if (!role) {
         throw new AppError("Role is required: { role: 'Admin' | 'Farmer' | 'Mandi_Officer' }", 400, 'ROLE_REQUIRED');
       }
 
       let targetId = userId;
-      if (!targetId && (email || username)) {
-        const identifier = (email || username).trim();
-        let target = await UserRepository.findByEmail(identifier);
+      const rawInput = (rawId || email || username || '').trim();
+      if (!targetId && rawInput) {
+        // 1. Try by exact email
+        let target = await UserRepository.findByEmail(rawInput);
+        // 2. Try by username
         if (!target) {
-          target = await UserRepository.findByUsername(identifier);
+          target = await UserRepository.findByUsername(rawInput);
+        }
+        // 3. Try by numeric User ID (e.g. 4 or #4)
+        const cleanNumeric = rawInput.replace(/^#/, '').trim();
+        if (!target && !isNaN(cleanNumeric) && cleanNumeric !== '') {
+          target = await UserRepository.findById(parseInt(cleanNumeric, 10));
         }
         if (!target) {
-          throw new AppError(`No user found with email or username '${identifier}'. Please ensure they register first.`, 404, 'USER_NOT_FOUND');
+          throw new AppError(`No user found with email, username, or ID '${rawInput}'. Please ensure they register first.`, 404, 'USER_NOT_FOUND');
         }
         targetId = target.User_ID;
       }
 
       if (!targetId) {
-        throw new AppError('Either userId, email, or username is required', 400, 'TARGET_REQUIRED');
+        throw new AppError('Either userId, email, username, or identifier is required', 400, 'TARGET_REQUIRED');
       }
 
       const updated = await AdminService.updateUserRole({
@@ -125,7 +132,7 @@ const AdminController = {
       });
 
       return successResponse(res, {
-        message: `User role successfully updated to ${role}`,
+        message: `User role successfully updated to ${role} for ${updated.Username || targetId}`,
         data: updated
       });
     } catch (err) {
@@ -190,21 +197,22 @@ const AdminController = {
       const bookings = await BookingService.getAllBookings({ ...req.query, limit: 1000 });
       const records = Array.isArray(bookings) ? bookings : (bookings.items || []);
 
-      const fields = [
+      const cols = [
         { key: 'Token_Number', label: 'Token' },
-        { key: 'Farmer_Name', label: 'Farmer' },
-        { key: 'Phone_Number', label: 'Phone' },
+        { key: 'Farmer_Name', label: 'Farmer Name' },
+        { key: 'Farmer_Phone', label: 'Phone' },
         { key: 'Mandi_Name', label: 'Mandi' },
-        { key: 'Produce_Name', label: 'Produce' },
-        { key: 'Estimated_Weight_Tons', label: 'Estimated_Tons' },
+        { key: 'Produce_Name', label: 'Commodity' },
+        { key: 'Slot_Date', label: 'Slot Date' },
+        { key: 'Estimated_Weight_Tons', label: 'Weight (Tons)' },
         { key: 'Booking_Status', label: 'Status' },
-        { key: 'Slot_Date', label: 'Date' }
+        { key: 'Created_At', label: 'Created At' }
       ];
 
-      const csv = toCsv(records, fields);
+      const csvData = toCsv(records, cols);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="agrislot_bookings_${Date.now()}.csv"`);
-      return res.status(200).send(csv);
+      res.setHeader('Content-Disposition', 'attachment; filename="agrislot_bookings.csv"');
+      return res.send(csvData);
     } catch (err) {
       next(err);
     }
@@ -212,27 +220,26 @@ const AdminController = {
 
   async exportTransactionsCsv(req, res, next) {
     try {
-      const transactions = await TransactionService.getAllTransactions(req.query);
+      const transactions = await TransactionService.getAllTransactions({ ...req.query, limit: 1000 });
       const records = Array.isArray(transactions) ? transactions : (transactions.items || []);
 
-      const fields = [
-        { key: 'Txn_ID', label: 'Txn_ID' },
-        { key: 'Token_Number', label: 'Token' },
+      const cols = [
+        { key: 'Txn_ID', label: 'Transaction ID' },
+        { key: 'Booking_ID', label: 'Booking ID' },
         { key: 'Farmer_Name', label: 'Farmer' },
         { key: 'Trader_Name', label: 'Trader' },
         { key: 'Mandi_Name', label: 'Mandi' },
-        { key: 'Produce_Name', label: 'Produce' },
-        { key: 'Actual_Weight', label: 'Net_Tons' },
-        { key: 'Price_Per_Ton', label: 'Rate_Per_Ton' },
-        { key: 'Total_Amount', label: 'Gross_Amount' },
-        { key: 'Payment_Status', label: 'Payment_Status' },
+        { key: 'Actual_Weight', label: 'Weight (Tons)' },
+        { key: 'Price_Per_Ton', label: 'Rate/Ton (INR)' },
+        { key: 'Total_Amount', label: 'Total Value (INR)' },
+        { key: 'Payment_Status', label: 'Payment Status' },
         { key: 'Txn_Date', label: 'Date' }
       ];
 
-      const csv = toCsv(records, fields);
+      const csvData = toCsv(records, cols);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="agrislot_transactions_${Date.now()}.csv"`);
-      return res.status(200).send(csv);
+      res.setHeader('Content-Disposition', 'attachment; filename="agrislot_transactions.csv"');
+      return res.send(csvData);
     } catch (err) {
       next(err);
     }
@@ -240,20 +247,20 @@ const AdminController = {
 
   async exportFarmersCsv(req, res, next) {
     try {
-      const farmers = await FarmerService.getAllFarmers({ limit: 1000 });
+      const farmers = await FarmerService.getAllFarmers({ ...req.query, limit: 1000 });
       const records = Array.isArray(farmers) ? farmers : (farmers.items || []);
 
-      const fields = [
-        { key: 'Farmer_ID', label: 'Farmer_ID' },
-        { key: 'Name', label: 'Name' },
-        { key: 'Phone', label: 'Phone' },
-        { key: 'Village', label: 'Village' }
+      const cols = [
+        { key: 'Farmer_ID', label: 'Farmer ID' },
+        { key: 'Name', label: 'Full Name' },
+        { key: 'Phone', label: 'Registered Mobile' },
+        { key: 'Village', label: 'Village / Region' }
       ];
 
-      const csv = toCsv(records, fields);
+      const csvData = toCsv(records, cols);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="agrislot_producers_${Date.now()}.csv"`);
-      return res.status(200).send(csv);
+      res.setHeader('Content-Disposition', 'attachment; filename="agrislot_farmers.csv"');
+      return res.send(csvData);
     } catch (err) {
       next(err);
     }
@@ -264,23 +271,21 @@ const AdminController = {
       const utilization = await SlotService.getUtilization();
       const records = Array.isArray(utilization) ? utilization : [];
 
-      const fields = [
-        { key: 'Mandi_ID', label: 'Mandi_ID' },
-        { key: 'Mandi_Name', label: 'Mandi' },
+      const cols = [
+        { key: 'Mandi_ID', label: 'Mandi ID' },
+        { key: 'Mandi_Name', label: 'Mandi Name' },
         { key: 'District', label: 'District' },
-        { key: 'Slot_Date', label: 'Date' },
-        { key: 'Start_Time', label: 'Start' },
-        { key: 'End_Time', label: 'End' },
-        { key: 'Max_Capacity_Tons', label: 'Total_Capacity_Tons' },
-        { key: 'Booked_Capacity_Tons', label: 'Booked_Tons' },
-        { key: 'Available_Capacity_Tons', label: 'Available_Tons' },
-        { key: 'Utilization_Percentage', label: 'Utilization_Pct' }
+        { key: 'Total_Slots', label: 'Total Slots' },
+        { key: 'Total_Max_Capacity_Tons', label: 'Max Capacity (Tons)' },
+        { key: 'Total_Booked_Capacity_Tons', label: 'Booked Capacity (Tons)' },
+        { key: 'Total_Remaining_Capacity_Tons', label: 'Available Capacity (Tons)' },
+        { key: 'Utilization_Percentage', label: 'Utilization %' }
       ];
 
-      const csv = toCsv(records, fields);
+      const csvData = toCsv(records, cols);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="agrislot_utilization_${Date.now()}.csv"`);
-      return res.status(200).send(csv);
+      res.setHeader('Content-Disposition', 'attachment; filename="agrislot_mandi_utilization.csv"');
+      return res.send(csvData);
     } catch (err) {
       next(err);
     }

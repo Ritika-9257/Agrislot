@@ -56,13 +56,20 @@ const BookingController = {
 
   async getAllBookings(req, res, next) {
     try {
-      const { status, date, mandiId, farmerId, token, page, limit } = req.query;
+      const { status, date, startDate, endDate, mandiId, farmerId, token, search, cropId, category, sortBy, sortOrder, page, limit } = req.query;
       const bookings = await BookingService.getAllBookings({
         status,
         date,
+        startDate,
+        endDate,
         mandiId: mandiId ? parseInt(mandiId, 10) : undefined,
         farmerId: farmerId ? parseInt(farmerId, 10) : undefined,
         token,
+        search,
+        cropId: cropId ? parseInt(cropId, 10) : undefined,
+        category,
+        sortBy,
+        sortOrder,
         page: page ? parseInt(page, 10) : 1,
         limit: limit ? parseInt(limit, 10) : 20
       });
@@ -80,7 +87,8 @@ const BookingController = {
       const bookingId = parseInt(req.params.id, 10);
       const { Booking_Status } = req.body;
       const changedBy = req.user?.username || req.user?.role || 'admin';
-      const result = await BookingService.updateBookingStatus(bookingId, Booking_Status, changedBy);
+      const officerId = req.user?.userId || null;
+      const result = await BookingService.updateBookingStatus(bookingId, Booking_Status, { changedBy, officerId });
       return successResponse(res, {
         message: 'Booking status updated successfully',
         data: result
@@ -93,7 +101,9 @@ const BookingController = {
   async checkInByToken(req, res, next) {
     try {
       const { token, grossWeightKg, tareWeightKg, bay } = req.body;
-      const result = await BookingService.checkInByToken({ token, grossWeightKg, tareWeightKg, bay });
+      const changedBy = req.user?.username || req.user?.role || 'weighbridge_operator';
+      const officerId = req.user?.userId || null;
+      const result = await BookingService.checkInByToken({ token, grossWeightKg, tareWeightKg, bay }, { changedBy, officerId });
       return successResponse(res, {
         message: 'Vehicle checked in and clearance authorized successfully',
         data: result

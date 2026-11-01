@@ -81,7 +81,8 @@ const AuthService = {
       {
         userId: user.User_ID,
         username: user.Username,
-        role: user.User_Role
+        role: user.User_Role,
+        farmerId: user.Farmer_ID || null
       },
       env.JWT_SECRET,
       { expiresIn: env.JWT_EXPIRES_IN }

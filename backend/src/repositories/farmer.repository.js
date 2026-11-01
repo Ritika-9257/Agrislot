@@ -80,6 +80,10 @@ const FarmerRepository = {
         b.Estimated_Weight_Tons,
         b.Booking_Status,
         b.Created_At,
+        b.Check_In_Time,
+        b.Completion_Time,
+        b.Officer_ID,
+        u.Full_Name AS Officer_Name,
         s.Slot_ID,
         s.Slot_Date,
         s.Start_Time,
@@ -94,6 +98,7 @@ const FarmerRepository = {
       JOIN Slots s ON b.Slot_ID = s.Slot_ID
       JOIN Mandis m ON s.Mandi_ID = m.Mandi_ID
       JOIN Produce p ON b.Produce_ID = p.Produce_ID
+      LEFT JOIN User_Login u ON b.Officer_ID = u.User_ID
       WHERE b.Farmer_ID = ?
       ORDER BY b.Created_At DESC
     `;

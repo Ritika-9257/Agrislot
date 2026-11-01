@@ -3,10 +3,10 @@ set -e
 
 # Default credentials (matches user MySQL configuration)
 DB_USER="${DB_USER:-root}"
-DB_PASS="${DB_PASSWORD:-6125}"
+DB_PASS="${DB_PASSWORD:-}"
 DB_NAME="${DB_NAME:-agrislot}"
 DB_HOST="${DB_HOST:-127.0.0.1}"
-DB_PORT="${DB_PORT:-3306}"
+DB_PORT="${DB_PORT:-3307}"
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

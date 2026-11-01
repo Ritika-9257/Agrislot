@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { 
   Search, 
@@ -15,15 +16,18 @@ import {
   User, 
   Phone, 
   ShieldCheck, 
+  ShieldAlert,
   AlertCircle,
   Truck,
   Camera
 } from 'lucide-react';
 import { AgriSlotAPI } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 
 function VerifyContent() {
+  const { user } = useAuth();
   const searchParams = useSearchParams();
-  const initialToken = searchParams.get('token') || 'AG-T001';
+  const initialToken = searchParams.get('token') || '';
 
   const [tokenInput, setTokenInput] = useState(initialToken);
   const [booking, setBooking] = useState(null);
@@ -69,8 +73,6 @@ function VerifyContent() {
     }
   };
 
-  const sampleTokens = ['AG-T001', 'AG-T002', 'AG-T003', 'AG-T004', 'AG-T005'];
-
   const tokenCode = booking ? (booking.Token_Number || booking.Gate_Pass_Token || booking.tokenNumber || tokenInput) : '';
   const phone = booking ? (booking.Farmer_Phone || booking.Phone_Number || booking.phone || '9822014412') : '';
   const farmerName = booking ? (booking.Farmer_Name || booking.farmerName || 'Registered Producer') : '';
@@ -80,6 +82,33 @@ function VerifyContent() {
   const status = booking ? (booking.Booking_Status || booking.bookingStatus || 'Confirmed') : '';
   const weight = booking ? Number(booking.Estimated_Weight_Tons || booking.estimatedWeightTons || 4.5) : 4.5;
   const bookingId = booking ? (booking.Booking_ID || booking.bookingId || '101') : '101';
+
+  if (user?.role === 'Farmer') {
+    return (
+      <div className="max-w-xl mx-auto my-12 p-8 bg-white rounded-bento border-[2.5px] border-navy-border shadow-bento text-center space-y-4">
+        <div className="w-14 h-14 mx-auto rounded-full bg-coral/30 border-2 border-navy-border flex items-center justify-center text-coral-dark">
+          <ShieldAlert className="w-7 h-7" />
+        </div>
+        <h2 className="text-2xl font-display font-black text-navy-border">
+          Gatekeeper Terminal Restricted
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-600 font-medium">
+          Gate-Pass token verification is exclusively restricted to authorized APMC Mandi Officers and Administrators.
+        </p>
+        <p className="text-xs text-slate-500 font-mono">
+          As a registered Farmer, you can view, download, and track the live status of all your bookings directly in your portal.
+        </p>
+        <div className="pt-2">
+          <Link
+            href="/farmer?tab=history"
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-xs uppercase tracking-wider border-[2px] border-navy-border shadow-bento-sm active:translate-y-0.5 transition-all"
+          >
+            Go to My Bookings &amp; Passes
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -112,7 +141,7 @@ function VerifyContent() {
               type="text"
               value={tokenInput}
               onChange={(e) => setTokenInput(e.target.value)}
-              placeholder="e.g. AG-T10001"
+              placeholder="Enter gate-pass token (e.g. AG-T...)"
               className="w-full h-12 pl-11 pr-4 bg-mint-light/40 border-[2px] border-navy-border rounded-xl font-mono text-sm font-bold text-navy-border placeholder:text-slate-400 focus:ring-0 focus:border-forest shadow-bento-sm uppercase"
             />
           </div>
@@ -132,23 +161,6 @@ function VerifyContent() {
             )}
           </button>
         </form>
-
-        {/* Quick Click Samples */}
-        <div className="pt-2 flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="text-slate-400 font-bold uppercase text-[10px]">Quick Test:</span>
-          {sampleTokens.map((st) => (
-            <button
-              key={st}
-              onClick={() => {
-                setTokenInput(st);
-                handleVerify(st);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-mint-foam hover:bg-mint-light text-forest border border-navy-border transition-all shadow-sm active:translate-y-0.5"
-            >
-              {st}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Error Message */}
@@ -156,6 +168,13 @@ function VerifyContent() {
         <div className="p-4 rounded-2xl bg-coral/60 border-[2px] border-navy-border text-coral-dark font-mono text-xs font-bold flex items-center gap-2 shadow-bento-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {/* Initial Empty Guide */}
+      {!booking && !loading && !error && (
+        <div className="p-8 text-center bg-white rounded-bento border-[2px] border-dashed border-slate-300 text-slate-500 font-mono text-xs">
+          Enter an authenticated gate-pass token code above and click <span className="font-bold text-forest">Verify Token</span> to inspect gate entry clearance details.
         </div>
       )}
 

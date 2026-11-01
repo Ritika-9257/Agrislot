@@ -79,13 +79,20 @@ const BookingService = {
     try {
       await connection.beginTransaction();
 
-      // 3. Acquire row-level exclusive lock on the slot (SELECT ... FOR UPDATE)
+      // 3. STEP A: Lock farmer account profile row (SELECT ... FOR UPDATE) to serialize booking attempts from the same farmer
+      await connection.query('SELECT Farmer_ID FROM Farmers WHERE Farmer_ID = ? FOR UPDATE', [resolvedFarmerId]);
+
+      // 4. STEP B: Acquire row-level exclusive lock on the requested slot (SELECT ... FOR UPDATE)
       const slot = await SlotRepository.findByIdForUpdate(Slot_ID, connection);
       if (!slot) {
         throw new AppError(`Slot with ID ${Slot_ID} does not exist`, 404, 'SLOT_NOT_FOUND');
       }
 
-      // 4. Validate slot date (cannot book past date)
+      // 5. STEP C: Validate slot status and date
+      if (slot.Slot_Status === 'Closed') {
+        throw new AppError('This time-slot has been administratively closed for bookings', 400, 'SLOT_CLOSED');
+      }
+
       const todayStr = new Date().toISOString().split('T')[0];
       const slotDateStr = typeof slot.Slot_Date === 'string' 
         ? slot.Slot_Date.split('T')[0] 
@@ -95,20 +102,48 @@ const BookingService = {
         throw new AppError(`Cannot book slot for past date (${slotDateStr})`, 400, 'PAST_DATE_NOT_BOOKABLE');
       }
 
-      // 5. Concurrency & capacity check
-      const maxCapacity = parseFloat(slot.Max_Capacity_Tons);
-      const bookedCapacity = parseFloat(slot.Booked_Capacity_Tons);
-      const remainingCapacity = maxCapacity - bookedCapacity;
+      // 6. STEP D: ENFORCE "ONE BOOKING PER FARMER PER DAY" RULE
+      // Check whether the authenticated farmer already has a non-cancelled booking on this calendar date across all mandis
+      const existingDailyBooking = await BookingRepository.findActiveBookingByFarmerAndDate(
+        resolvedFarmerId,
+        slotDateStr,
+        connection
+      );
 
-      if (requestedWeight > remainingCapacity) {
+      if (existingDailyBooking) {
         throw new AppError(
-          `Insufficient slot capacity. Requested: ${requestedWeight} tons, Available: ${remainingCapacity.toFixed(2)} tons`,
+          `You already have a booking for this date (${slotDateStr}) at ${existingDailyBooking.Mandi_Name} (Token: ${existingDailyBooking.Token_Number}, Status: ${existingDailyBooking.Booking_Status}). You can book another slot after cancelling your existing upcoming booking.`,
           409,
-          'INSUFFICIENT_CAPACITY'
+          'ONE_BOOKING_PER_DAY_LIMIT_REACHED'
         );
       }
 
-      // 6. Generate collision-resistant digital gate-pass token with retry mechanism
+      // 7. STEP E: Hybrid Capacity & Concurrency Checks (Both limits must pass)
+      // Check 7A: Maximum Farmer Limit
+      const maxBookings = parseInt(slot.Max_Bookings, 10) || 5;
+      const bookedCount = parseInt(slot.Booked_Count, 10) || 0;
+      if (bookedCount >= maxBookings) {
+        throw new AppError(
+          `Slot is fully booked. Maximum farmer limit reached (${bookedCount}/${maxBookings} farmers reserved).`,
+          409,
+          'SLOT_FARMER_LIMIT_REACHED'
+        );
+      }
+
+      // Check 7B: Maximum Total Weight Capacity
+      const maxCapacity = parseFloat(slot.Max_Capacity_Tons);
+      const bookedCapacity = parseFloat(slot.Booked_Capacity_Tons);
+      const remainingCapacity = Math.max(0, maxCapacity - bookedCapacity);
+
+      if (requestedWeight > remainingCapacity) {
+        throw new AppError(
+          `Insufficient slot weight capacity. Requested: ${requestedWeight} tons, Available: ${remainingCapacity.toFixed(2)} tons`,
+          409,
+          'INSUFFICIENT_WEIGHT_CAPACITY'
+        );
+      }
+
+      // 8. STEP F: Generate collision-resistant digital gate-pass token with retry mechanism
       let tokenNumber = null;
       let bookingId = null;
       let attempts = 0;
@@ -138,10 +173,29 @@ const BookingService = {
         throw new AppError('Unable to generate unique gate pass token after several attempts', 500, 'TOKEN_GENERATION_FAILED');
       }
 
-      // 7. Atomically increment slot booked capacity
-      await SlotRepository.incrementBookedCapacity(Slot_ID, requestedWeight, connection);
+      // 9. STEP G: Insert into Farmer_Daily_Reservations (enforces database-level uniqueness)
+      try {
+        await BookingRepository.createDailyReservation(
+          resolvedFarmerId,
+          slotDateStr,
+          bookingId,
+          connection
+        );
+      } catch (resErr) {
+        if (resErr.code === 'ER_DUP_ENTRY') {
+          throw new AppError(
+            `You already have a booking for date ${slotDateStr}. One booking per farmer per day is enforced.`,
+            409,
+            'ONE_BOOKING_PER_DAY_LIMIT_REACHED'
+          );
+        }
+        throw resErr;
+      }
 
-      // 8. Commit atomic transaction
+      // 10. STEP H: Atomically increment slot booked count and booked capacity
+      await SlotRepository.incrementSlotBooking(Slot_ID, requestedWeight, connection);
+
+      // 11. STEP I: Commit atomic transaction
       await connection.commit();
 
       logger.info(`Booking created successfully: ID=${bookingId}, Token=${tokenNumber}, Weight=${requestedWeight}T`);
@@ -223,11 +277,14 @@ const BookingService = {
       // 1. Update status to Cancelled
       await BookingRepository.updateStatus(bookingId, 'Cancelled', connection);
 
-      // 2. Decrement slot capacity atomically
-      const weightToRelease = parseFloat(booking.Estimated_Weight_Tons);
-      await SlotRepository.decrementBookedCapacity(booking.Slot_ID, weightToRelease, connection);
+      // 2. Remove from Farmer_Daily_Reservations to permit the farmer to rebook on this date
+      await BookingRepository.deleteDailyReservation(bookingId, connection);
 
-      // 3. Commit
+      // 3. Decrement slot farmer count and weight capacity atomically
+      const weightToRelease = parseFloat(booking.Estimated_Weight_Tons);
+      await SlotRepository.decrementSlotBooking(booking.Slot_ID, weightToRelease, connection);
+
+      // 4. Commit
       await connection.commit();
 
       logger.info(`Booking ${bookingId} cancelled. Released ${weightToRelease}T back to Slot ${booking.Slot_ID}`);
@@ -288,7 +345,17 @@ const BookingService = {
   /**
    * Admin booking status transition management
    */
-  async updateBookingStatus(bookingId, newStatus, changedBy = 'admin') {
+  async updateBookingStatus(bookingId, newStatus, options = {}) {
+    let changedBy = 'admin';
+    let officerId = null;
+
+    if (typeof options === 'string') {
+      changedBy = options;
+    } else if (options && typeof options === 'object') {
+      changedBy = options.changedBy || options.username || 'admin';
+      officerId = options.officerId || null;
+    }
+
     const current = await BookingRepository.findById(bookingId);
     if (!current) {
       throw new AppError(`Booking with ID ${bookingId} not found`, 404, 'BOOKING_NOT_FOUND');
@@ -301,10 +368,12 @@ const BookingService = {
 
     // Validate state machine transitions
     const validTransitions = {
-      'Confirmed': ['Checked-In', 'Cancelled'],
-      'Checked-In': ['Completed'],
+      'Confirmed': ['Checked-In', 'In Process', 'Cancelled', 'No-Show'],
+      'Checked-In': ['In Process', 'Completed', 'Cancelled'],
+      'In Process': ['Completed'],
       'Completed': [],
-      'Cancelled': []
+      'Cancelled': [],
+      'No-Show': []
     };
 
     const allowed = validTransitions[current.Booking_Status] || [];
@@ -316,28 +385,64 @@ const BookingService = {
       );
     }
 
-    await BookingRepository.updateStatus(bookingId, newStatus);
+    await BookingRepository.updateStatus(bookingId, newStatus, { officerId });
 
     AuditService.logAudit({
       tableName: 'Bookings',
       operationType: 'STATUS_UPDATE',
       recordId: bookingId,
       oldData: { Booking_Status: current.Booking_Status },
-      newData: { Booking_Status: newStatus },
+      newData: { Booking_Status: newStatus, Officer_ID: officerId },
       changedBy
     });
+
+    // Notify the specific farmer of their token lifecycle progression
+    const statusTitles = {
+      'Checked-In': `Gate Clearance Approved — Token ${current.Token_Number}`,
+      'In Process': `Unloading In Process — Token ${current.Token_Number}`,
+      'Completed': `Mandi Visit Completed — Token ${current.Token_Number}`,
+      'No-Show': `Arrival Marked No-Show — Token ${current.Token_Number}`
+    };
+    const statusMessages = {
+      'Checked-In': `Your vehicle with Token ${current.Token_Number} has been admitted into the APMC yard.`,
+      'In Process': `Your produce for Token ${current.Token_Number} is currently undergoing weighbridge inspection and unloading.`,
+      'Completed': `Your visit for Token ${current.Token_Number} is successfully completed. Unloading finished.`,
+      'No-Show': `Your scheduled arrival window for Token ${current.Token_Number} has lapsed and was marked as No-Show.`
+    };
+
+    if (statusTitles[newStatus]) {
+      NotificationService.notify({
+        farmerId: current.Farmer_ID,
+        title: statusTitles[newStatus],
+        message: statusMessages[newStatus],
+        type: newStatus.toUpperCase().replace(/\s+/g, '_'),
+        entityType: 'Booking',
+        entityId: bookingId
+      });
+    }
 
     return {
       bookingId,
       previousStatus: current.Booking_Status,
-      bookingStatus: newStatus
+      bookingStatus: newStatus,
+      officerId
     };
   },
 
   /**
    * Fast-track gate check-in by token with automated weighbridge tare & gross calculation
    */
-  async checkInByToken({ token, grossWeightKg, tareWeightKg, bay }) {
+  async checkInByToken({ token, grossWeightKg, tareWeightKg, bay }, options = {}) {
+    let changedBy = 'weighbridge_operator';
+    let officerId = null;
+
+    if (typeof options === 'string') {
+      changedBy = options;
+    } else if (options && typeof options === 'object') {
+      changedBy = options.changedBy || options.username || 'weighbridge_operator';
+      officerId = options.officerId || null;
+    }
+
     if (!token) {
       throw new AppError('Gate-pass token is required for check-in', 400, 'TOKEN_REQUIRED');
     }
@@ -349,14 +454,20 @@ const BookingService = {
     if (booking.Booking_Status === 'Cancelled') {
       throw new AppError('Cannot admit vehicle: Booking has been cancelled', 400, 'BOOKING_CANCELLED');
     }
+    if (booking.Booking_Status === 'No-Show') {
+      throw new AppError('Cannot admit vehicle: Booking was marked as No-Show', 400, 'BOOKING_NO_SHOW');
+    }
     if (booking.Booking_Status === 'Completed') {
       throw new AppError('Cannot admit vehicle: Booking has already been completed and discharged', 400, 'BOOKING_ALREADY_COMPLETED');
     }
     if (booking.Booking_Status === 'Checked-In') {
       throw new AppError('Vehicle has already checked in at the weighbridge gate', 409, 'DUPLICATE_CHECK_IN');
     }
+    if (booking.Booking_Status === 'In Process') {
+      throw new AppError('Vehicle has already been admitted and is currently in process', 409, 'DUPLICATE_CHECK_IN');
+    }
 
-    const statusResult = await this.updateBookingStatus(booking.Booking_ID, 'Checked-In', 'weighbridge_operator');
+    const statusResult = await this.updateBookingStatus(booking.Booking_ID, 'Checked-In', { changedBy, officerId });
 
     const declaredWeight = parseFloat(booking.Estimated_Weight_Tons) || 5.0;
     const gross = grossWeightKg ? parseFloat(grossWeightKg) : (declaredWeight * 1000 + 2920);

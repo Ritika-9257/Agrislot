@@ -97,12 +97,14 @@ function validateFile(filePath) {
   }
 
   if (tagStack.length > 0) {
-    console.error(`Unclosed tags in ${filePath}:`, tagStack);
+    console.error(`Unclosed tags in ${path.relative(projectRoot, filePath)}:`, tagStack);
     return false;
   }
-  console.log(`✓ ${filePath} JSX tags are 100% matched!`);
+  console.log(`✓ ${path.relative(projectRoot, filePath)} JSX tags are 100% matched!`);
   return true;
 }
+
+const projectRoot = path.resolve(__dirname, '..');
 
 const allValid = [
   'frontend/src/app/page.jsx',
@@ -116,6 +118,6 @@ const allValid = [
   'frontend/src/components/AuthModal.jsx',
   'frontend/src/components/GatePassModal.jsx',
   'frontend/src/components/SmsNotificationModal.jsx'
-].every(validateFile);
+].map(rel => path.join(projectRoot, rel)).every(validateFile);
 
 process.exit(allValid ? 0 : 1);

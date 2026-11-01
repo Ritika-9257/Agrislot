@@ -22,7 +22,8 @@ import {
   Layers,
   Sparkles,
   Lock,
-  CalendarDays
+  CalendarDays,
+  X
 } from 'lucide-react';
 import { AgriSlotAPI } from '@/lib/api';
 import GatePassModal from '@/components/GatePassModal';
@@ -59,8 +60,16 @@ const TIME_SLOTS_CONFIG = [
 function FarmerPortalContent() {
   const { user, openLogin } = useAuth();
   const searchParams = useSearchParams();
-  const initialTab = searchParams.get('tab') || 'book';
-  const [activeTab, setActiveTab] = useState(initialTab); // 'book' | 'history'
+  const tabParam = searchParams.get('tab') || 'book';
+  const [activeTab, setActiveTab] = useState(tabParam); // 'book' | 'history'
+
+  useEffect(() => {
+    if (tabParam === 'history') {
+      setActiveTab('history');
+    } else {
+      setActiveTab('book');
+    }
+  }, [tabParam]);
 
   // Master Data
   const [mandis, setMandis] = useState([]);
@@ -89,8 +98,26 @@ function FarmerPortalContent() {
   // My Bookings Tab State
   const [myBookings, setMyBookings] = useState([]);
   const [searchFilter, setSearchFilter] = useState('');
+  const [historyCategory, setHistoryCategory] = useState('ALL'); // 'ALL' | 'UPCOMING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [cancelModal, setCancelModal] = useState({ open: false, booking: null });
+
+  const formatDateTime = (ts) => {
+    if (!ts) return null;
+    try {
+      const d = new Date(ts);
+      return isNaN(d.getTime()) ? String(ts) : d.toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return String(ts);
+    }
+  };
 
   // Initial Load of Mandis and Produce
   useEffect(() => {
@@ -131,7 +158,13 @@ function FarmerPortalContent() {
         if (res?.data && Array.isArray(res.data)) {
           setDbSlots(res.data);
           // Auto-select first available slot if nothing is selected or current selection is full
-          const firstAvailable = res.data.find(s => Number(s.Remaining_Capacity_Tons) > 0);
+          const reqWeight = parseFloat(quantityTons) || 0.5;
+          const firstAvailable = res.data.find(s => {
+            const maxBookings = Number(s.Max_Bookings) || 5;
+            const bookedCount = Number(s.Booked_Count) || 0;
+            const remCap = Number(s.Remaining_Capacity_Tons !== undefined ? s.Remaining_Capacity_Tons : (Number(s.Max_Capacity_Tons || 50) - Number(s.Booked_Capacity_Tons || 0)));
+            return s.Slot_Status !== 'Closed' && bookedCount < maxBookings && remCap >= reqWeight;
+          });
           if (firstAvailable) {
             setSelectedSlotId(firstAvailable.Slot_ID);
           } else if (res.data.length > 0) {
@@ -157,7 +190,14 @@ function FarmerPortalContent() {
     }
     setLoadingHistory(true);
     try {
-      const res = await AgriSlotAPI.getAdminBookings(token || '', { limit: 50 }).catch(() => null);
+      if (user?.farmerId) {
+        const res = await AgriSlotAPI.getFarmerBookings(user.farmerId, token).catch(() => null);
+        if (res?.data && Array.isArray(res.data)) {
+          setMyBookings(res.data);
+          return;
+        }
+      }
+      const res = await AgriSlotAPI.getAdminBookings(token || '', { limit: 100 }).catch(() => null);
       if (res?.data && Array.isArray(res.data)) {
         if (user?.farmerId) {
           const userBookings = res.data.filter(b => b.Farmer_ID === user.farmerId);
@@ -199,6 +239,10 @@ function FarmerPortalContent() {
         prev.map(b => (b.Booking_ID === bId ? { ...b, Booking_Status: 'Cancelled' } : b))
       );
       setCancelModal({ open: false, booking: null });
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('agrislot_refresh_notifications'));
+      }
       if (selectedMandiId && bookingDate) {
         const res = await AgriSlotAPI.getSlots({ mandiId: selectedMandiId, date: bookingDate });
         if (res?.data) setDbSlots(res.data);
@@ -219,14 +263,46 @@ function FarmerPortalContent() {
       return;
     }
 
+    if (existingActiveBookingForDate) {
+      setErrorMessage('You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.');
+      return;
+    }
+
     if (!selectedSlotId) {
       setErrorMessage('Please click and select an available GREEN time slot from the chart.');
       return;
     }
 
     const chosenSlot = dbSlots.find(s => s.Slot_ID === selectedSlotId);
-    if (chosenSlot && Number(chosenSlot.Remaining_Capacity_Tons) <= 0) {
-      setErrorMessage('This time slot is fully booked (RED). Please choose an available GREEN slot.');
+    if (!chosenSlot) {
+      setErrorMessage('Selected slot was not found. Please choose an available GREEN slot.');
+      return;
+    }
+
+    const maxBookings = Number(chosenSlot.Max_Bookings) || 5;
+    const bookedCount = Number(chosenSlot.Booked_Count) || 0;
+    const maxCap = Number(chosenSlot.Max_Capacity_Tons) || 50.0;
+    const bookedCap = Number(chosenSlot.Booked_Capacity_Tons) || 0.0;
+    const remainingCap = Math.max(0.0, maxCap - bookedCap);
+    const reqWeight = Number(quantityTons) || 5;
+
+    if (chosenSlot.Slot_Status === 'Closed') {
+      setErrorMessage('This time slot is closed for bookings.');
+      return;
+    }
+
+    if (bookedCount >= maxBookings) {
+      setErrorMessage(`This time slot has reached its maximum farmer limit (${bookedCount}/${maxBookings} farmers). Please choose another GREEN slot.`);
+      return;
+    }
+
+    if (remainingCap <= 0) {
+      setErrorMessage('This time slot is fully booked on weight capacity (0.0T left). Please choose an available GREEN slot.');
+      return;
+    }
+
+    if (reqWeight > remainingCap) {
+      setErrorMessage(`Requested weight (${reqWeight} Tons) exceeds the remaining capacity (${remainingCap.toFixed(1)} Tons) of this slot. Please reduce commodity weight or choose another slot.`);
       return;
     }
 
@@ -270,6 +346,10 @@ function FarmerPortalContent() {
         setSuccessBooking(finalizedPass);
         setShowGatePassModal(true);
 
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('agrislot_refresh_notifications'));
+        }
+
         const updatedSlots = await AgriSlotAPI.getSlots({ mandiId: selectedMandiId, date: bookingDate });
         if (updatedSlots?.data) setDbSlots(updatedSlots.data);
       }
@@ -287,8 +367,82 @@ function FarmerPortalContent() {
     return dbSlots.find(s => s.Start_Time === cfg.startTime);
   };
 
+  const getSlotHybridStatus = (dbRow, reqWeight) => {
+    if (!dbRow) {
+      return {
+        isAvailable: true,
+        isFull: false,
+        isClosed: false,
+        isFarmerLimitHit: false,
+        isWeightLimitHit: false,
+        isWeightExceededForUser: false,
+        remainingSpaces: 5,
+        maxBookings: 5,
+        bookedCount: 0,
+        remainingTons: 50.0,
+        maxCap: 50.0,
+        bookedCap: 0.0,
+        reason: null
+      };
+    }
+
+    const maxBookings = Number(dbRow.Max_Bookings) || 5;
+    const bookedCount = Number(dbRow.Booked_Count) || 0;
+    const remainingSpaces = Math.max(0, maxBookings - bookedCount);
+
+    const maxCap = Number(dbRow.Max_Capacity_Tons) || 50.0;
+    const bookedCap = Number(dbRow.Booked_Capacity_Tons) || 0.0;
+    const remainingTons = Math.max(
+      0.0,
+      Number(dbRow.Remaining_Capacity_Tons !== undefined ? dbRow.Remaining_Capacity_Tons : (maxCap - bookedCap))
+    );
+
+    const isClosed = dbRow.Slot_Status === 'Closed';
+    const isFarmerLimitHit = bookedCount >= maxBookings;
+    const isWeightLimitHit = remainingTons <= 0;
+
+    // Slot is RED/Full ONLY when all 5 farmer spaces are taken OR all 50T capacity is exhausted
+    const isFull = isFarmerLimitHit || isWeightLimitHit;
+    const isAvailable = !isClosed && !isFull;
+
+    // User-specific validation: slot has available capacity, but the user's specific requested weight exceeds what remains
+    const isWeightExceededForUser = isAvailable && reqWeight > 0 && reqWeight > remainingTons;
+
+    let reason = null;
+    if (isClosed) reason = 'Slot Closed';
+    else if (isFarmerLimitHit && isWeightLimitHit) reason = 'Both Limits Full';
+    else if (isFarmerLimitHit) reason = `Max Farmers (${maxBookings}/${maxBookings})`;
+    else if (isWeightLimitHit) reason = 'Weight Capacity Full (0.0T Left)';
+    else if (isWeightExceededForUser) reason = `Available (${remainingTons.toFixed(1)}T left, requested ${reqWeight.toFixed(1)}T)`;
+
+    return {
+      isAvailable,
+      isFull,
+      isClosed,
+      isFarmerLimitHit,
+      isWeightLimitHit,
+      isWeightExceededForUser,
+      remainingSpaces,
+      maxBookings,
+      bookedCount,
+      remainingTons,
+      maxCap,
+      bookedCap,
+      reason
+    };
+  };
+
+  // Active reservation for the currently selected date across any mandi
+  const existingActiveBookingForDate = myBookings.find(b => {
+    if (b.Booking_Status === 'Cancelled') return false;
+    const bDate = b.Slot_Date ? b.Slot_Date.split('T')[0] : '';
+    return bDate === bookingDate;
+  });
+
   const selectedSlotRecord = dbSlots.find(s => s.Slot_ID === selectedSlotId);
   const selectedConfig = TIME_SLOTS_CONFIG.find(c => c.startTime === selectedSlotRecord?.Start_Time);
+  const requestedWeightVal = parseFloat(quantityTons) || 0.5;
+  const selectedSlotStatus = selectedSlotRecord ? getSlotHybridStatus(selectedSlotRecord, requestedWeightVal) : null;
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-16">
@@ -553,6 +707,84 @@ function FarmerPortalContent() {
               </div>
             </div>
 
+            {/* ONE BOOKING PER FARMER PER DAY NOTICE */}
+            {existingActiveBookingForDate && (
+              <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 space-y-3 animate-in fade-in">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                    <AlertCircle className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <div className="font-display font-black text-sm text-navy-border">
+                      One Booking Per Farmer Per Day Restriction
+                    </div>
+                    <p className="text-xs text-amber-950 font-bold leading-relaxed">
+                      You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Existing Booking Card */}
+                <div className="p-3.5 bg-white rounded-xl border border-amber-200 shadow-sm">
+                  <div className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider mb-2">
+                    Your Active Reservation for {bookingDate}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Booking Token</span>
+                      <span className="font-mono font-black text-forest text-sm">
+                        {existingActiveBookingForDate.Token_Number || existingActiveBookingForDate.Gate_Pass_Token}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Mandi Yard</span>
+                      <span className="font-extrabold text-navy-border">
+                        {existingActiveBookingForDate.Mandi_Name || 'APMC Mandi'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Time Slot</span>
+                      <span className="font-extrabold text-navy-border">
+                        {existingActiveBookingForDate.Start_Time ? `${existingActiveBookingForDate.Start_Time.slice(0, 5)} - ${existingActiveBookingForDate.End_Time.slice(0, 5)}` : 'Scheduled'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Produce & Weight</span>
+                      <span className="font-extrabold text-navy-border">
+                        {existingActiveBookingForDate.Produce_Name || 'Produce'} ({existingActiveBookingForDate.Estimated_Weight_Tons}T)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-gray-500">Status:</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                        existingActiveBookingForDate.Booking_Status === 'Confirmed'
+                          ? 'bg-amber-100 text-amber-900 border-amber-300'
+                          : existingActiveBookingForDate.Booking_Status === 'Checked-In'
+                          ? 'bg-sky-100 text-sky-900 border-sky-300'
+                          : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      }`}>
+                        {existingActiveBookingForDate.Booking_Status}
+                      </span>
+                    </div>
+
+                    {existingActiveBookingForDate.Booking_Status === 'Confirmed' && (
+                      <button
+                        type="button"
+                        onClick={() => setCancelModal({ open: true, booking: existingActiveBookingForDate })}
+                        className="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold text-xs transition-colors flex items-center gap-1.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Cancel Booking to Rebook</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {loadingSlots ? (
               <div className="py-12 text-center text-sm font-bold text-gray-500 flex items-center justify-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-forest" />
@@ -573,47 +805,76 @@ function FarmerPortalContent() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {morningConfigs.map((cfg) => {
                       const dbRow = getDbSlotForConfig(cfg);
-                      const isBooked = dbRow ? Number(dbRow.Remaining_Capacity_Tons) <= 0 : false;
+                      const reqWeight = parseFloat(quantityTons) || 0.5;
+                      const status = getSlotHybridStatus(dbRow, reqWeight);
                       const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
-                      const remainingTons = dbRow ? Number(dbRow.Remaining_Capacity_Tons) : 50;
+                      const isBlockedByDailyLimit = !!existingActiveBookingForDate;
 
                       return (
                         <button
                           key={cfg.id}
                           type="button"
-                          disabled={isBooked}
+                          disabled={!status.isAvailable || isBlockedByDailyLimit}
                           onClick={() => {
-                            if (dbRow) setSelectedSlotId(dbRow.Slot_ID);
+                            if (isBlockedByDailyLimit) {
+                              setErrorMessage('You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.');
+                              return;
+                            }
+                            if (dbRow && status.isAvailable) setSelectedSlotId(dbRow.Slot_ID);
                           }}
-                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between h-24 ${
+                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between min-h-[104px] ${
                             isSelected
                               ? 'bg-blue-600 border-navy-border text-white shadow-bento scale-[1.03] z-10'
-                              : isBooked
-                              ? 'bg-rose-50 border-rose-300 text-rose-800 opacity-75 cursor-not-allowed'
+                              : status.isClosed
+                              ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-75'
+                              : status.isFull
+                              ? 'bg-rose-50 border-rose-300 text-rose-950 cursor-not-allowed opacity-90'
+                              : isBlockedByDailyLimit
+                              ? 'bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed opacity-75'
                               : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
                           }`}
                         >
                           <div>
-                            <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-75">
-                              {cfg.id}
+                            <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider">
+                              <span className={isSelected ? 'text-blue-100' : 'opacity-70'}>{cfg.id}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                isSelected
+                                  ? 'bg-blue-700 text-white'
+                                  : status.isClosed
+                                  ? 'bg-gray-200 text-gray-700'
+                                  : status.isFull
+                                  ? 'bg-rose-200 text-rose-900'
+                                  : isBlockedByDailyLimit
+                                  ? 'bg-gray-200 text-gray-600'
+                                  : 'bg-emerald-200/90 text-emerald-900'
+                              }`}>
+                                {status.isClosed ? 'Closed' : `${status.remainingSpaces} Spaces Left`}
+                              </span>
                             </div>
-                            <div className="text-xs font-black mt-0.5 leading-snug">
+                            <div className="text-xs font-black mt-1 leading-snug">
                               {cfg.label.replace(' - ', ' to ')}
+                            </div>
+                            <div className="text-[10px] font-bold mt-0.5 opacity-80">
+                              👥 {status.bookedCount} / {status.maxBookings} Farmers
                             </div>
                           </div>
 
-                          <div className="mt-2 flex items-center justify-between text-[11px] font-extrabold">
+                          <div className="mt-2 pt-1 border-t border-black/10 flex items-center justify-between text-[11px] font-extrabold">
                             {isSelected ? (
-                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-1.5 py-0.5 rounded">
-                                <Check className="w-3 h-3" /> Selected
+                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                <Check className="w-3 h-3" /> Selected ({status.remainingTons.toFixed(1)}T Free)
                               </span>
-                            ) : isBooked ? (
-                              <span className="text-rose-700 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🔴 FULL
+                            ) : status.isClosed ? (
+                              <span className="text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🔒 Closed
+                              </span>
+                            ) : status.isFull ? (
+                              <span className="text-rose-800 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black truncate max-w-full" title={status.reason}>
+                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (0.0T Left)`}
                               </span>
                             ) : (
-                              <span className="text-emerald-800 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🟢 {remainingTons.toFixed(1)}T Free
+                              <span className="text-emerald-900 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🟢 {status.remainingTons.toFixed(1)}T Free
                               </span>
                             )}
                           </div>
@@ -646,47 +907,76 @@ function FarmerPortalContent() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {afternoonConfigs.map((cfg) => {
                       const dbRow = getDbSlotForConfig(cfg);
-                      const isBooked = dbRow ? Number(dbRow.Remaining_Capacity_Tons) <= 0 : false;
+                      const reqWeight = parseFloat(quantityTons) || 0.5;
+                      const status = getSlotHybridStatus(dbRow, reqWeight);
                       const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
-                      const remainingTons = dbRow ? Number(dbRow.Remaining_Capacity_Tons) : 50;
+                      const isBlockedByDailyLimit = !!existingActiveBookingForDate;
 
                       return (
                         <button
                           key={cfg.id}
                           type="button"
-                          disabled={isBooked}
+                          disabled={!status.isAvailable || isBlockedByDailyLimit}
                           onClick={() => {
-                            if (dbRow) setSelectedSlotId(dbRow.Slot_ID);
+                            if (isBlockedByDailyLimit) {
+                              setErrorMessage('You already have a booking for this date. You can book another slot after cancelling your existing upcoming booking.');
+                              return;
+                            }
+                            if (dbRow && status.isAvailable) setSelectedSlotId(dbRow.Slot_ID);
                           }}
-                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between h-24 ${
+                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between min-h-[104px] ${
                             isSelected
                               ? 'bg-blue-600 border-navy-border text-white shadow-bento scale-[1.03] z-10'
-                              : isBooked
-                              ? 'bg-rose-50 border-rose-300 text-rose-800 opacity-75 cursor-not-allowed'
+                              : status.isClosed
+                              ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-75'
+                              : status.isFull
+                              ? 'bg-rose-50 border-rose-300 text-rose-950 cursor-not-allowed opacity-90'
+                              : isBlockedByDailyLimit
+                              ? 'bg-gray-50 border-gray-300 text-gray-500 cursor-not-allowed opacity-75'
                               : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
                           }`}
                         >
                           <div>
-                            <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-75">
-                              {cfg.id}
+                            <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider">
+                              <span className={isSelected ? 'text-blue-100' : 'opacity-70'}>{cfg.id}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                isSelected
+                                  ? 'bg-blue-700 text-white'
+                                  : status.isClosed
+                                  ? 'bg-gray-200 text-gray-700'
+                                  : status.isFull
+                                  ? 'bg-rose-200 text-rose-900'
+                                  : isBlockedByDailyLimit
+                                  ? 'bg-gray-200 text-gray-600'
+                                  : 'bg-emerald-200/90 text-emerald-900'
+                              }`}>
+                                {status.isClosed ? 'Closed' : `${status.remainingSpaces} Spaces Left`}
+                              </span>
                             </div>
-                            <div className="text-xs font-black mt-0.5 leading-snug">
+                            <div className="text-xs font-black mt-1 leading-snug">
                               {cfg.label.replace(' - ', ' to ')}
+                            </div>
+                            <div className="text-[10px] font-bold mt-0.5 opacity-80">
+                              👥 {status.bookedCount} / {status.maxBookings} Farmers
                             </div>
                           </div>
 
-                          <div className="mt-2 flex items-center justify-between text-[11px] font-extrabold">
+                          <div className="mt-2 pt-1 border-t border-black/10 flex items-center justify-between text-[11px] font-extrabold">
                             {isSelected ? (
-                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-1.5 py-0.5 rounded">
-                                <Check className="w-3 h-3" /> Selected
+                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                <Check className="w-3 h-3" /> Selected ({status.remainingTons.toFixed(1)}T Free)
                               </span>
-                            ) : isBooked ? (
-                              <span className="text-rose-700 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🔴 FULL
+                            ) : status.isClosed ? (
+                              <span className="text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🔒 Closed
+                              </span>
+                            ) : status.isFull ? (
+                              <span className="text-rose-800 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black truncate max-w-full" title={status.reason}>
+                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (0.0T Left)`}
                               </span>
                             ) : (
-                              <span className="text-emerald-800 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🟢 {remainingTons.toFixed(1)}T Free
+                              <span className="text-emerald-900 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🟢 {status.remainingTons.toFixed(1)}T Free
                               </span>
                             )}
                           </div>
@@ -700,46 +990,69 @@ function FarmerPortalContent() {
             )}
 
             {/* SELECTION SUMMARY & CONFIRMATION BAR */}
-            <div className="bg-mint-foam rounded-2xl border-2 border-navy-border p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-              <div>
-                <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
-                  Chosen Arrival Window
-                </span>
-                <div className="text-base font-display font-black text-navy-border mt-0.5">
-                  {selectedConfig ? selectedConfig.label : 'Select a slot from chart above'}
+            <div className="bg-mint-foam rounded-2xl border-2 border-navy-border p-5 space-y-3 shadow-sm">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">
+                    Chosen Arrival Window
+                  </span>
+                  <div className="text-base font-display font-black text-navy-border mt-0.5">
+                    {selectedConfig ? selectedConfig.label : 'Select a slot from chart above'}
+                  </div>
+                  <div className="text-xs text-gray-600 font-semibold mt-0.5">
+                    Date: <span className="font-bold text-navy-border">{bookingDate}</span> • Commodity: <span className="font-bold text-navy-border">{produceList.find(p => p.Produce_ID === Number(selectedProduceId))?.Produce_Name || 'Produce'}</span> • Weight: <span className="font-bold text-navy-border">{quantityTons} Tons</span>
+                    {selectedSlotRecord && (
+                      <span className="ml-2 pl-2 border-l border-gray-300 font-bold text-emerald-800">
+                        • {Math.max(0, (selectedSlotRecord.Max_Bookings || 5) - (selectedSlotRecord.Booked_Count || 0))} spaces left • {Number(selectedSlotRecord.Remaining_Capacity_Tons !== undefined ? selectedSlotRecord.Remaining_Capacity_Tons : (50 - (selectedSlotRecord.Booked_Capacity_Tons || 0))).toFixed(1)}T free
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-600 font-semibold mt-0.5">
-                  Date: <span className="font-bold text-navy-border">{bookingDate}</span> • Commodity: <span className="font-bold text-navy-border">{produceList.find(p => p.Produce_ID === Number(selectedProduceId))?.Produce_Name || 'Produce'}</span> • Weight: <span className="font-bold text-navy-border">{quantityTons} Tons</span>
-                </div>
+
+                {user ? (
+                  <button
+                    type="submit"
+                    disabled={submitting || !selectedSlotId || !!existingActiveBookingForDate || (selectedSlotStatus && selectedSlotStatus.isWeightExceededForUser)}
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {submitting ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-saffron" />
+                        <span>Booking in MySQL...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Confirm Booking & Generate Gate Pass</span>
+                        <ArrowRight className="w-4 h-4 text-saffron" />
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openLogin}
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px]"
+                  >
+                    <Lock className="w-4 h-4 text-white" />
+                    <span>Log In to Confirm Booking</span>
+                  </button>
+                )}
               </div>
 
-              {user ? (
-                <button
-                  type="submit"
-                  disabled={submitting || !selectedSlotId}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-forest hover:bg-forest-light text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-saffron" />
-                      <span>Booking in MySQL...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Confirm Booking & Generate Gate Pass</span>
-                      <ArrowRight className="w-4 h-4 text-saffron" />
-                    </>
-                  )}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={openLogin}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-display font-black text-sm border-2 border-navy-border shadow-bento flex items-center justify-center gap-2 transition-all active:translate-x-[2px] active:translate-y-[2px]"
-                >
-                  <Lock className="w-4 h-4 text-white" />
-                  <span>Log In to Confirm Booking</span>
-                </button>
+              {/* Warning if requested weight exceeds remaining capacity of selected slot */}
+              {selectedSlotStatus && selectedSlotStatus.isWeightExceededForUser && (
+                <div className="p-3 bg-rose-50 text-rose-900 border border-rose-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>Insufficient Capacity: You requested {requestedWeightVal} Tons, but this slot has only {selectedSlotStatus.remainingTons.toFixed(1)} Tons free. Please reduce weight in Step 1 or select another GREEN slot.</span>
+                </div>
+              )}
+
+              {/* Notice if farmer already booked on this date */}
+              {existingActiveBookingForDate && (
+                <div className="p-3 bg-amber-100 text-amber-950 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>One Booking Per Day: You already have an active booking on {bookingDate}. You can book another slot after cancelling your existing upcoming booking.</span>
+                </div>
               )}
             </div>
 
@@ -751,126 +1064,252 @@ function FarmerPortalContent() {
       {/* ========================================================================= */}
       {/* TAB 2: MY BOOKINGS & DIGITAL PASSES                                       */}
       {/* ========================================================================= */}
-      {activeTab === 'history' && (
-        <div className="space-y-6">
-          
-          <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-display font-black text-navy-border">
-                  My Bookings & Gate Pass Tokens
-                </h2>
-                <p className="text-xs text-gray-600 mt-1">
-                  Present your unique Token Code upon arrival at the Mandi Gate for clearance.
-                </p>
+      {activeTab === 'history' && (() => {
+        const upcomingCount = myBookings.filter(b => b.Booking_Status === 'Confirmed').length;
+        const activeCount = myBookings.filter(b => b.Booking_Status === 'Checked-In' || b.Booking_Status === 'In Process').length;
+        const completedCount = myBookings.filter(b => b.Booking_Status === 'Completed').length;
+        const cancelledCount = myBookings.filter(b => b.Booking_Status === 'Cancelled').length;
+
+        const displayedHistoryBookings = myBookings.filter(b => {
+          const status = b.Booking_Status || 'Confirmed';
+          if (historyCategory === 'UPCOMING' && status !== 'Confirmed') return false;
+          if (historyCategory === 'ACTIVE' && status !== 'Checked-In' && status !== 'In Process') return false;
+          if (historyCategory === 'COMPLETED' && status !== 'Completed') return false;
+          if (historyCategory === 'CANCELLED' && status !== 'Cancelled') return false;
+
+          if (searchFilter) {
+            const q = searchFilter.toLowerCase();
+            const tok = (b.Token_Number || b.Gate_Pass_Token || '').toLowerCase();
+            const date = (b.Slot_Date || '').toLowerCase();
+            const prod = (b.Produce_Name || '').toLowerCase();
+            const mandi = (b.Mandi_Name || '').toLowerCase();
+            return tok.includes(q) || date.includes(q) || prod.includes(q) || mandi.includes(q);
+          }
+          return true;
+        });
+
+        return (
+          <div className="space-y-6">
+            
+            <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 shadow-bento space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-display font-black text-navy-border">
+                    My Booking History & Gate Passes
+                  </h2>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Your complete mandi arrival history. Completed visits are permanently archived in the MySQL database.
+                  </p>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search token, date, produce..."
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-gray-50 border-2 border-navy-border rounded-xl text-xs font-bold focus:bg-white focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Filter by token, date..."
-                  value={searchFilter}
-                  onChange={(e) => setSearchFilter(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border-2 border-navy-border rounded-xl text-xs font-bold focus:bg-white focus:outline-none"
-                />
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 pb-3">
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'ALL'
+                      ? 'bg-forest text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  All ({myBookings.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('UPCOMING')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'UPCOMING'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                  }`}
+                >
+                  ⏳ Upcoming ({upcomingCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('ACTIVE')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'ACTIVE'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'bg-sky-50 text-sky-800 hover:bg-sky-100'
+                  }`}
+                >
+                  🚜 Active / In-Process ({activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('COMPLETED')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'COMPLETED'
+                      ? 'bg-emerald-700 text-white shadow-sm'
+                      : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  }`}
+                >
+                  ✓ Completed ({completedCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryCategory('CANCELLED')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyCategory === 'CANCELLED'
+                      ? 'bg-rose-700 text-white shadow-sm'
+                      : 'bg-rose-50 text-rose-800 hover:bg-rose-100'
+                  }`}
+                >
+                  ✕ Cancelled ({cancelledCount})
+                </button>
               </div>
-            </div>
 
-            {loadingHistory ? (
-              <div className="py-12 text-center text-sm font-bold text-gray-500">
-                <RefreshCw className="w-5 h-5 animate-spin mx-auto text-forest mb-2" />
-                Loading your bookings...
-              </div>
-            ) : !user ? (
-              <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-3">
-                <Lock className="w-10 h-10 text-gray-400 mx-auto" />
-                <div className="text-sm font-bold text-gray-700">Please sign in to view your Gate Pass Tokens and booking history.</div>
-                <button
-                  type="button"
-                  onClick={openLogin}
-                  className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border shadow-sm hover:bg-forest-light transition-all"
-                >
-                  Sign In with Farmer Account
-                </button>
-              </div>
-            ) : myBookings.length === 0 ? (
-              <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-2">
-                <Tractor className="w-10 h-10 text-gray-400 mx-auto" />
-                <div className="text-sm font-bold text-gray-700">No bookings found yet.</div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('book')}
-                  className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border"
-                >
-                  Book Your First Arrival Slot
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {myBookings
-                  .filter(b => {
-                    if (!searchFilter) return true;
-                    const q = searchFilter.toLowerCase();
-                    const tok = (b.Token_Number || b.Gate_Pass_Token || '').toLowerCase();
-                    const date = (b.Slot_Date || '').toLowerCase();
-                    const prod = (b.Produce_Name || '').toLowerCase();
-                    return tok.includes(q) || date.includes(q) || prod.includes(q);
-                  })
-                  .map((booking, idx) => {
+              {loadingHistory ? (
+                <div className="py-12 text-center text-sm font-bold text-gray-500">
+                  <RefreshCw className="w-5 h-5 animate-spin mx-auto text-forest mb-2" />
+                  Loading your bookings...
+                </div>
+              ) : !user ? (
+                <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-3">
+                  <Lock className="w-10 h-10 text-gray-400 mx-auto" />
+                  <div className="text-sm font-bold text-gray-700">Please sign in to view your Gate Pass Tokens and booking history.</div>
+                  <button
+                    type="button"
+                    onClick={openLogin}
+                    className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border shadow-sm hover:bg-forest-light transition-all"
+                  >
+                    Sign In with Farmer Account
+                  </button>
+                </div>
+              ) : displayedHistoryBookings.length === 0 ? (
+                <div className="py-12 text-center border-2 border-dashed border-gray-200 rounded-2xl space-y-2">
+                  <Tractor className="w-10 h-10 text-gray-400 mx-auto" />
+                  <div className="text-sm font-bold text-gray-700">
+                    {searchFilter || historyCategory !== 'ALL'
+                      ? 'No bookings match your current filter.'
+                      : 'No bookings found yet.'}
+                  </div>
+                  {historyCategory === 'ALL' && !searchFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('book')}
+                      className="px-4 py-2 bg-forest text-saffron rounded-lg text-xs font-bold border border-navy-border"
+                    >
+                      Book Your First Arrival Slot
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {displayedHistoryBookings.map((booking, idx) => {
                     const token = booking.Token_Number || booking.Gate_Pass_Token || `AG-T${booking.Booking_ID}`;
                     const status = booking.Booking_Status || 'Confirmed';
 
                     return (
                       <div
                         key={booking.Booking_ID || idx}
-                        className="bg-white rounded-2xl border-2 border-navy-border p-5 shadow-sm space-y-3 relative hover:shadow-md transition-all"
+                        className="bg-white rounded-2xl border-2 border-navy-border p-5 shadow-sm space-y-3 relative hover:shadow-md transition-all flex flex-col justify-between"
                       >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
-                              Mandi Gate Token
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                                Mandi Gate Token
+                              </span>
+                              <div className="text-xl font-mono font-black text-forest">
+                                {token}
+                              </div>
+                            </div>
+
+                            <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${
+                              status === 'Confirmed'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : status === 'Checked-In'
+                                ? 'bg-sky-100 text-sky-900 border-sky-300'
+                                : status === 'In Process'
+                                ? 'bg-indigo-100 text-indigo-900 border-indigo-300'
+                                : status === 'Completed'
+                                ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                : 'bg-rose-100 text-rose-900 border-rose-300'
+                            }`}>
+                              {status === 'Checked-In' ? 'Checked-In (Gate)' : status === 'In Process' ? 'In Process (Yard)' : status}
                             </span>
-                            <div className="text-xl font-mono font-black text-forest">
-                              {token}
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-gray-100">
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Mandi Yard</span>
+                              <span className="font-bold text-navy-border">{booking.Mandi_Name || 'APMC Surat'}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Commodity</span>
+                              <span className="font-bold text-navy-border">
+                                {booking.Produce_Name || 'Wheat'}
+                                <span className="ml-1 text-[10px] text-gray-500 font-normal">
+                                  ({booking.Category || booking.Produce_Category || 'General'})
+                                </span>
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Arrival Date</span>
+                              <span className="font-bold text-navy-border">{booking.Slot_Date ? booking.Slot_Date.split('T')[0] : 'Today'}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Time Window</span>
+                              <span className="font-bold text-navy-border">
+                                {booking.Start_Time ? `${booking.Start_Time.slice(0, 5)} - ${booking.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Estimated Weight</span>
+                              <span className="font-bold text-navy-border">{booking.Estimated_Weight_Tons || 5} Tons</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 block text-[10px] uppercase font-bold">Booking Reference</span>
+                              <span className="font-mono text-[11px] font-bold text-gray-600">#{booking.Booking_ID}</span>
                             </div>
                           </div>
 
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase border ${
-                            status === 'Confirmed'
-                              ? 'bg-amber-100 text-amber-800 border-amber-300'
-                              : status === 'Checked-In'
-                              ? 'bg-blue-100 text-blue-800 border-blue-300'
-                              : status === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                              : 'bg-rose-100 text-rose-800 border-rose-300'
-                          }`}>
-                            {status === 'Checked-In' ? 'In Process (Yard)' : status}
-                          </span>
+                          {/* Lifecycle Timestamps & Handling Officer */}
+                          {(booking.Check_In_Time || booking.Completion_Time || booking.Officer_Name) && (
+                            <div className="p-2.5 bg-gray-50 rounded-xl border border-gray-200 text-[11px] space-y-1">
+                              {booking.Check_In_Time && (
+                                <div className="text-gray-600">
+                                  <span className="font-bold text-navy-border">Gate Check-In:</span> {formatDateTime(booking.Check_In_Time)}
+                                </div>
+                              )}
+                              {booking.Completion_Time && (
+                                <div className="text-gray-600">
+                                  <span className="font-bold text-navy-border">Unloading Completed:</span> {formatDateTime(booking.Completion_Time)}
+                                </div>
+                              )}
+                              {booking.Officer_Name && (
+                                <div className="text-gray-500 text-[10px]">
+                                  <span className="font-bold text-gray-700">Handled By:</span> Officer {booking.Officer_Name}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Completed Preservation Notice */}
+                          {status === 'Completed' && (
+                            <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200 text-[10px] font-bold text-emerald-800 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                              <span>Visit completed. Permanent historical record archived in MySQL.</span>
+                            </div>
+                          )}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-gray-100">
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Mandi Yard</span>
-                            <span className="font-bold text-navy-border">{booking.Mandi_Name || 'APMC Surat'}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Commodity</span>
-                            <span className="font-bold text-navy-border">{booking.Produce_Name || 'Wheat'}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Arrival Date</span>
-                            <span className="font-bold text-navy-border">{booking.Slot_Date ? booking.Slot_Date.split('T')[0] : 'Today'}</span>
-                          </div>
-                          <div>
-                            <span className="text-gray-400 block text-[10px] uppercase font-bold">Time Window</span>
-                            <span className="font-bold text-navy-border">
-                              {booking.Start_Time ? `${booking.Start_Time.slice(0, 5)} - ${booking.End_Time.slice(0, 5)}` : '09:00 - 09:20'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="pt-2 flex items-center justify-between border-t border-gray-100">
+                        <div className="pt-3 flex items-center justify-between border-t border-gray-100 mt-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -896,13 +1335,14 @@ function FarmerPortalContent() {
                       </div>
                     );
                   })}
-              </div>
-            )}
+                </div>
+              )}
+
+            </div>
 
           </div>
-
-        </div>
-      )}
+        );
+      })()}
 
       {/* GATE PASS MODAL */}
       {showGatePassModal && successBooking && (
