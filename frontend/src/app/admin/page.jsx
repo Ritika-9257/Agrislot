@@ -44,18 +44,20 @@ function AdminPortalContent() {
   const isOfficer = authUser?.role === 'Mandi_Officer';
 
   const getTabFromParam = (tab) => {
-    if (tab === 'users' || tab === 'access') return isOfficer ? 'verify' : 'access';
-    if (tab === 'bookings') return 'bookings';
-    if (tab === 'active' || tab === 'inprocess') return 'active';
-    if (tab === 'confirmed') return 'confirmed';
-    if (tab === 'completed') return 'completed';
-    if (tab === 'cancelled') return 'cancelled';
-    if (tab === 'no-show' || tab === 'noshow') return isOfficer ? 'verify' : 'overview';
-    if (tab === 'slots') return isOfficer ? 'verify' : 'slots';
-    if (tab === 'farmers') return isOfficer ? 'verify' : 'farmers';
-    if (tab === 'analysis' || tab === 'dbms') return isOfficer ? 'verify' : 'analysis';
-    if (tab === 'verify' || tab === 'gate') return 'verify';
-    if (tab === 'overview') return isOfficer ? 'verify' : 'overview';
+    if (!tab) return isOfficer ? 'verify' : 'overview';
+    const t = String(tab).toLowerCase();
+    if (t === 'users' || t === 'access' || t === 'rbac') return isOfficer ? 'verify' : 'access';
+    if (t === 'bookings' || t === 'history') return 'bookings';
+    if (t === 'active' || t === 'inprocess' || t === 'yard') return 'active';
+    if (t === 'confirmed' || t === 'expected') return 'confirmed';
+    if (t === 'completed' || t === 'done') return 'completed';
+    if (t === 'cancelled') return 'cancelled';
+    if (t === 'no-show' || t === 'noshow') return isOfficer ? 'verify' : 'overview';
+    if (t === 'slots' || t === 'capacity') return isOfficer ? 'verify' : 'slots';
+    if (t === 'farmers' || t === 'directory') return isOfficer ? 'verify' : 'farmers';
+    if (t === 'analysis' || t === 'dbms' || t === 'reports') return isOfficer ? 'verify' : 'analysis';
+    if (t === 'verify' || t === 'gate') return 'verify';
+    if (t === 'overview') return isOfficer ? 'verify' : 'overview';
     return isOfficer ? 'verify' : 'overview';
   };
 
@@ -63,14 +65,14 @@ function AdminPortalContent() {
   // 'overview' | 'verify' | 'active' | 'confirmed' | 'bookings' | 'completed' | 'cancelled' | 'slots' | 'farmers' | 'analysis' | 'access'
   const [activeTab, setActiveTab] = useState(() => getTabFromParam(tabParam));
 
-  // Sync activeTab whenever URL query changes (e.g. sidebar navigation)
+  // Sync activeTab whenever URL query changes (e.g. sidebar navigation or browser back/forward)
   useEffect(() => {
     setActiveTab(getTabFromParam(tabParam));
   }, [tabParam, isOfficer]);
 
   const handleTabChange = (newTab) => {
     setActiveTab(newTab);
-    const targetUrl = newTab === 'overview' ? '/admin' : `/admin?tab=${newTab}`;
+    const targetUrl = newTab === 'overview' ? '/admin?tab=overview' : `/admin?tab=${newTab}`;
     router.push(targetUrl, { scroll: false });
   };
 
@@ -673,78 +675,112 @@ function AdminPortalContent() {
         </div>
       </div>
 
-      {/* COMPREHENSIVE NAVIGATION TABS (Sections A - K) */}
-      <div className="bg-white border-2 border-navy-border rounded-2xl p-1.5 shadow-sm overflow-x-auto">
-        <div className="flex items-center gap-1 min-w-max">
-          <button
-            onClick={() => handleTabChange('overview')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
-              activeTab === 'overview'
-                ? 'bg-forest text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
-            }`}
-          >
-            📊 Overview
-          </button>
+      {/* COMPREHENSIVE HORIZONTAL NAVIGATION BAR (Primary Admin Navigation) */}
+      <div className="bg-white border-2 border-navy-border rounded-2xl p-1.5 shadow-bento-sm overflow-x-auto scrollbar-thin">
+        <div className="flex items-center gap-1.5 min-w-max">
+          {!isOfficer && (
+            <button
+              onClick={() => handleTabChange('overview')}
+              className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                activeTab === 'overview'
+                  ? 'bg-forest text-white shadow-sm border border-forest'
+                  : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
+              }`}
+            >
+              <span>📊</span>
+              <span>Overview</span>
+            </button>
+          )}
           <button
             onClick={() => handleTabChange('verify')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'verify'
-                ? 'bg-forest text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                ? 'bg-forest text-white shadow-sm border border-forest'
+                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
             }`}
           >
-            🔍 Verify Token & Check-In
+            <span>🔍</span>
+            <span>Verify Token &amp; Check-In</span>
           </button>
           <button
             onClick={() => handleTabChange('active')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'active'
-                ? 'bg-sky-600 text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                ? 'bg-sky-600 text-white shadow-sm border border-sky-700'
+                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
             }`}
           >
-            🚜 Active In-Yard ({inProcessBookings.length})
+            <span>🚜</span>
+            <span>Active In-Yard</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'active' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {inProcessBookings.length}
+            </span>
           </button>
           <button
             onClick={() => handleTabChange('confirmed')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'confirmed'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                ? 'bg-amber-600 text-white shadow-sm border border-amber-700'
+                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
             }`}
           >
-            ⏳ Confirmed / Expected ({upcomingBookings.length})
+            <span>⏳</span>
+            <span>Confirmed / Expected</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'confirmed' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {upcomingBookings.length}
+            </span>
           </button>
           <button
             onClick={() => handleTabChange('bookings')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'bookings'
-                ? 'bg-forest text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                ? 'bg-forest text-white shadow-sm border border-forest'
+                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
             }`}
           >
-            📋 All Bookings ({allBookings.length})
+            <span>📋</span>
+            <span>All Bookings</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'bookings' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {allBookings.length}
+            </span>
           </button>
           <button
             onClick={() => handleTabChange('completed')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'completed'
-                ? 'bg-emerald-700 text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                ? 'bg-emerald-700 text-white shadow-sm border border-emerald-800'
+                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
             }`}
           >
-            ✓ Completed ({completedBookings.length})
+            <span>✓</span>
+            <span>Completed Deliveries</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'completed' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {completedBookings.length}
+            </span>
           </button>
           <button
             onClick={() => handleTabChange('cancelled')}
-            className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+            className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'cancelled'
-                ? 'bg-rose-700 text-white shadow-sm'
-                : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                ? 'bg-rose-700 text-white shadow-sm border border-rose-800'
+                : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
             }`}
           >
-            ✕ Cancelled ({cancelledBookings.length})
+            <span>✕</span>
+            <span>Cancelled Bookings</span>
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeTab === 'cancelled' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {cancelledBookings.length}
+            </span>
           </button>
           {!isOfficer && (
             <>
@@ -753,52 +789,56 @@ function AdminPortalContent() {
                   handleTabChange('slots');
                   loadSlots();
                 }}
-                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
                   activeTab === 'slots'
-                    ? 'bg-forest text-white shadow-sm'
-                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                    ? 'bg-forest text-white shadow-sm border border-forest'
+                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
                 }`}
               >
-                🗂️ Slot Capacity
+                <span>🗂️</span>
+                <span>Slot Capacity</span>
               </button>
               <button
                 onClick={() => {
                   handleTabChange('farmers');
                   loadFarmers();
                 }}
-                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
                   activeTab === 'farmers'
-                    ? 'bg-forest text-white shadow-sm'
-                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                    ? 'bg-forest text-white shadow-sm border border-forest'
+                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
                 }`}
               >
-                🌾 Farmers
+                <span>🌾</span>
+                <span>Farmer Master Directory</span>
               </button>
               <button
                 onClick={() => {
                   handleTabChange('analysis');
                   loadAnalysisData();
                 }}
-                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
                   activeTab === 'analysis'
-                    ? 'bg-forest text-white shadow-sm'
-                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                    ? 'bg-forest text-white shadow-sm border border-forest'
+                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
                 }`}
               >
-                📈 DBMS Analysis
+                <span>📈</span>
+                <span>Database &amp; Reports</span>
               </button>
               <button
                 onClick={() => {
                   handleTabChange('access');
                   loadUsers();
                 }}
-                className={`px-3 py-2 rounded-xl font-bold text-xs transition-all ${
+                className={`px-3.5 py-2 rounded-xl font-bold text-xs transition-all whitespace-nowrap flex items-center gap-1.5 ${
                   activeTab === 'access'
-                    ? 'bg-purple-700 text-white shadow-sm'
-                    : 'text-gray-700 hover:text-navy-border hover:bg-gray-100'
+                    ? 'bg-purple-700 text-white shadow-sm border border-purple-800'
+                    : 'text-slate-700 hover:text-navy-border hover:bg-mint-foam/70 border border-transparent'
                 }`}
               >
-                👥 Manage Admin Access
+                <span>👥</span>
+                <span>Manage Roles (RBAC)</span>
               </button>
             </>
           )}

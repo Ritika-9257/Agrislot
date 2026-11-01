@@ -45,30 +45,15 @@ function SidebarContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Three distinct role-based navigation menus: Admin, Mandi Officer, Farmer (and Public Visitor)
+  // Distinct role-based navigation: Single Admin Dashboard entry for Admin & Officer; Farmer/Visitor portals preserved
   let navLinks = [];
   if (user?.role === 'Admin') {
     navLinks = [
       { href: '/admin', label: 'Admin Dashboard', icon: ShieldCheck, badge: 'ADMIN' },
-      { href: '/admin?tab=verify', label: 'Gate Clearance Desk', icon: QrCode, badge: 'GATE' },
-      { href: '/admin?tab=active', label: 'Active In-Yard', icon: Tractor, badge: 'YARD' },
-      { href: '/admin?tab=confirmed', label: 'Expected Arrivals', icon: CalendarCheck, badge: 'EXPECTED' },
-      { href: '/admin?tab=bookings', label: 'All Booking History', icon: CalendarCheck, badge: 'HISTORY' },
-      { href: '/admin?tab=completed', label: 'Completed Deliveries', icon: CheckCircle2, badge: 'DONE' },
-      { href: '/admin?tab=users', label: 'Manage Roles (RBAC)', icon: Users, badge: 'ACCESS' },
-      { href: '/admin?tab=analysis', label: 'Database & Reports', icon: BarChart3, badge: 'DBMS' },
-      { href: '/admin?tab=slots', label: 'Slot Capacity Manager', icon: Layers },
-      { href: '/admin?tab=farmers', label: 'Farmer Master Directory', icon: Tractor },
-      { href: '/verify', label: 'Quick Token Lookup', icon: QrCode },
     ];
   } else if (user?.role === 'Mandi_Officer') {
     navLinks = [
-      { href: '/admin?tab=verify', label: 'Gate Clearance Desk', icon: ShieldCheck, badge: 'OFFICER' },
-      { href: '/admin?tab=active', label: 'Active In-Yard', icon: Tractor, badge: 'IN-YARD' },
-      { href: '/admin?tab=confirmed', label: 'Expected Arrivals', icon: CalendarCheck, badge: 'EXPECTED' },
-      { href: '/admin?tab=completed', label: 'Completed Deliveries', icon: CheckCircle2, badge: 'DONE' },
-      { href: '/admin?tab=bookings', label: 'All Booking History', icon: CalendarCheck },
-      { href: '/verify', label: 'Verify Gate Token', icon: QrCode },
+      { href: '/admin', label: 'Admin Dashboard', icon: ShieldCheck, badge: 'OFFICER' },
     ];
   } else if (user?.role === 'Farmer') {
     navLinks = [
@@ -88,28 +73,16 @@ function SidebarContent() {
     const [pathPart, queryPart] = link.href.split('?');
     if (pathname !== pathPart) return false;
 
-    // If link has query parameters (e.g. ?tab=...)
+    // If link has query parameters (e.g. /farmer?tab=history)
     if (queryPart) {
       const linkParams = new URLSearchParams(queryPart);
       const linkTab = linkParams.get('tab');
-      if (linkTab === 'users') {
-        return currentTab === 'users' || currentTab === 'access';
-      }
-      if (linkTab === 'analysis') {
-        return currentTab === 'analysis' || currentTab === 'dbms';
-      }
-      if (linkTab === 'active') {
-        return currentTab === 'active' || currentTab === 'inprocess';
-      }
-      if (linkTab === 'verify') {
-        return currentTab === 'verify' || currentTab === 'gate';
-      }
       return currentTab === linkTab;
     }
 
-    // Link has no query string (e.g. /admin, /farmer, /, /verify)
+    // Link has no query string (e.g. /admin, /farmer, /)
     if (pathPart === '/admin') {
-      return !currentTab || currentTab === 'overview';
+      return pathname === '/admin';
     }
     if (pathPart === '/farmer') {
       return !currentTab || currentTab === 'book';
