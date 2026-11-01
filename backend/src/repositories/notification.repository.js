@@ -162,7 +162,10 @@ const NotificationRepository = {
     try {
       let sql = 'UPDATE notifications SET Is_Read = TRUE WHERE Is_Read = FALSE';
       const params = [];
-      if (farmerId) {
+      if (farmerId && userId) {
+        sql += ' AND (Farmer_ID = ? OR User_ID = ?)';
+        params.push(farmerId, userId);
+      } else if (farmerId) {
         sql += ' AND Farmer_ID = ?';
         params.push(farmerId);
       } else if (userId) {

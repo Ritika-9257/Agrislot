@@ -354,8 +354,8 @@ export const AgriSlotAPI = {
   },
   markNotificationRead: (id) =>
     apiRequest(`/notifications/${id}/read`, { method: 'PATCH' }),
-  markAllNotificationsRead: () =>
-    apiRequest('/notifications/read-all', { method: 'PATCH' }),
+  markAllNotificationsRead: (payload = {}) =>
+    apiRequest('/notifications/read-all', { method: 'PATCH', body: payload }),
 
   // CSV Report Exports (Safe RFC 4180)
   getExportCsvUrl: (type, params) => {

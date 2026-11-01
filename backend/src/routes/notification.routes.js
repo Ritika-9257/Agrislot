@@ -71,8 +71,21 @@ router.patch('/:id/read', async (req, res, next) => {
 // PATCH /api/v1/notifications/read-all
 router.patch('/read-all', async (req, res, next) => {
   try {
-    const farmerId = req.user?.farmerId || null;
-    const userId = req.user?.userId || null;
+    let farmerId = req.body?.farmerId ? parseInt(req.body.farmerId, 10) : null;
+    let userId = req.body?.userId ? parseInt(req.body.userId, 10) : null;
+
+    if (req.user) {
+      userId = req.user.userId;
+      if (req.user.farmerId) {
+        farmerId = req.user.farmerId;
+      } else {
+        const userRec = await UserRepository.findById(req.user.userId);
+        if (userRec && userRec.Farmer_ID) {
+          farmerId = userRec.Farmer_ID;
+        }
+      }
+    }
+
     const updated = await NotificationService.markAllAsRead({ farmerId, userId });
     return successResponse(res, {
       message: 'All notifications marked as read',

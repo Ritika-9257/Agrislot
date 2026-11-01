@@ -73,9 +73,12 @@ export default function Header({ title }) {
 
   const handleMarkAllRead = async () => {
     try {
-      await AgriSlotAPI.markAllNotificationsRead();
       setNotifications(prev => prev.map(n => ({ ...n, Is_Read: 1 })));
       setUnreadCount(0);
+      await AgriSlotAPI.markAllNotificationsRead({
+        farmerId: user?.farmerId,
+        userId: user?.userId
+      });
     } catch {
       setNotifications(prev => prev.map(n => ({ ...n, Is_Read: 1 })));
       setUnreadCount(0);
