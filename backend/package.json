@@ -1,0 +1,43 @@
+{
+  "name": "agrislot-backend",
+  "version": "1.0.0",
+  "description": "AgriSlot - Complete Backend & APMC Mandi Management Platform",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "node --test tests/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
+    "check:jsx": "node ../scripts/check_jsx.js",
+    "verify": "node ../scripts/verify_system.js",
+    "db:setup": "bash ../database/setup_db.sh",
+    "start:all": "bash ../start_agrislot.sh"
+  },
+  "keywords": [
+    "agrislot",
+    "apmc",
+    "mandi",
+    "slot-booking",
+    "express",
+    "mysql",
+    "plsql"
+  ],
+  "author": "AgriSlot Engineering Team",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "google-auth-library": "^11.3.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.12.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9",
+    "supertest": "^7.0.0"
+  }
+}
