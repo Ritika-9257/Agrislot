@@ -219,6 +219,29 @@ export const AgriSlotAPI = {
     return apiRequest(`/slots?${q.toString()}`);
   },
   getSlotUtilization: () => apiRequest('/slots/utilization'),
+  getSlotBookings: (slotId, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/admin/slots/${slotId}/bookings`, { headers });
+  },
+  updateSlotLimits: (slotId, data, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return apiRequest(`/admin/slots/${slotId}/limits`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(data),
+    });
+  },
+  reconcileSlots: (slotId, token) => {
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const endpoint = slotId ? `/admin/slots/${slotId}/reconcile` : '/admin/slots/reconcile-all';
+    return apiRequest(endpoint, {
+      method: 'POST',
+      headers,
+    });
+  },
 
   // Bookings
   createBooking: (data, token) => {

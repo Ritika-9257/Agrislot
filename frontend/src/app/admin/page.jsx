@@ -94,11 +94,18 @@ function AdminPortalContent() {
   const [mandiFilter, setMandiFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
 
-  // Slot Management State
+  // Slot Management State (Hybrid Farmer Limit + Weight Capacity)
   const [slotsList, setSlotsList] = useState([]);
   const [slotsDateFilter, setSlotsDateFilter] = useState(todayStr);
   const [slotsMandiFilter, setSlotsMandiFilter] = useState(1);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotStatusFilter, setSlotStatusFilter] = useState('ALL'); // 'ALL' | 'Available' | 'Full' | 'Closed'
+  const [editingSlot, setEditingSlot] = useState(null); // Slot currently being edited in modal
+  const [slotBookingsModal, setSlotBookingsModal] = useState({ open: false, slot: null, bookings: [], loading: false });
+  const [savingSlotLimits, setSavingSlotLimits] = useState(false);
+  const [slotLimitError, setSlotLimitError] = useState('');
+  const [slotLimitSuccess, setSlotLimitSuccess] = useState('');
+  const [reconcilingSlots, setReconcilingSlots] = useState(false);
 
   // Farmer Profiles State
   const [farmersList, setFarmersList] = useState([]);
@@ -222,6 +229,111 @@ function AdminPortalContent() {
       // Fallback
     } finally {
       setLoadingSlots(false);
+    }
+  };
+
+  const handleOpenSlotBookings = async (slot) => {
+    setSlotBookingsModal({ open: true, slot, bookings: [], loading: true });
+    try {
+      const res = await AgriSlotAPI.getSlotBookings(slot.Slot_ID, activeAuthToken);
+      if (res?.data?.bookings) {
+        setSlotBookingsModal({ open: true, slot, bookings: res.data.bookings, loading: false });
+      } else {
+        const filtered = allBookings.filter(b => b.Slot_ID === slot.Slot_ID);
+        setSlotBookingsModal({ open: true, slot, bookings: filtered, loading: false });
+      }
+    } catch {
+      const filtered = allBookings.filter(b => b.Slot_ID === slot.Slot_ID);
+      setSlotBookingsModal({ open: true, slot, bookings: filtered, loading: false });
+    }
+  };
+
+  const handleOpenEditSlot = (slot) => {
+    setEditingSlot({
+      ...slot,
+      newMaxBookings: slot.Max_Bookings || 5,
+      newMaxCapacity: Number(slot.Max_Capacity_Tons || 50),
+      newStatus: slot.Slot_Status || 'Available'
+    });
+    setSlotLimitError('');
+    setSlotLimitSuccess('');
+  };
+
+  const handleSaveSlotLimits = async () => {
+    if (!editingSlot) return;
+    setSlotLimitError('');
+    setSlotLimitSuccess('');
+
+    const newMaxB = parseInt(editingSlot.newMaxBookings, 10);
+    const newMaxC = parseFloat(editingSlot.newMaxCapacity);
+
+    if (isNaN(newMaxB) || newMaxB <= 0) {
+      setSlotLimitError('Max farmers limit must be a positive integer.');
+      return;
+    }
+    if (newMaxB < Number(editingSlot.Booked_Count || 0)) {
+      setSlotLimitError(`Cannot reduce farmer limit to ${newMaxB}. This slot already has ${editingSlot.Booked_Count} active booking(s).`);
+      return;
+    }
+
+    if (isNaN(newMaxC) || newMaxC <= 0) {
+      setSlotLimitError('Max capacity must be a positive number.');
+      return;
+    }
+    if (newMaxC < Number(editingSlot.Booked_Capacity_Tons || 0)) {
+      setSlotLimitError(`Cannot reduce capacity to ${newMaxC}T. This slot already has ${Number(editingSlot.Booked_Capacity_Tons).toFixed(2)}T booked.`);
+      return;
+    }
+
+    setSavingSlotLimits(true);
+    try {
+      const res = await AgriSlotAPI.updateSlotLimits(
+        editingSlot.Slot_ID,
+        {
+          maxBookings: newMaxB,
+          maxCapacityTons: newMaxC,
+          status: editingSlot.newStatus
+        },
+        activeAuthToken
+      );
+
+      if (res?.data) {
+        setSlotLimitSuccess('Slot limits updated and enforced in MySQL successfully!');
+        setTimeout(() => {
+          setEditingSlot(null);
+          loadSlots();
+        }, 1200);
+      }
+    } catch (err) {
+      setSlotLimitError(err.message || 'Failed to update slot limits.');
+    } finally {
+      setSavingSlotLimits(false);
+    }
+  };
+
+  const handleToggleSlotStatus = async (slot) => {
+    const nextStatus = slot.Slot_Status === 'Closed' ? 'Available' : 'Closed';
+    try {
+      await AgriSlotAPI.updateSlotLimits(
+        slot.Slot_ID,
+        { status: nextStatus },
+        activeAuthToken
+      );
+      loadSlots();
+    } catch (err) {
+      alert(err.message || 'Failed to toggle slot status');
+    }
+  };
+
+  const handleReconcileSlots = async (slotId = null) => {
+    setReconcilingSlots(true);
+    try {
+      await AgriSlotAPI.reconcileSlots(slotId, activeAuthToken);
+      await loadSlots();
+    } catch (err) {
+      console.warn('Reconciliation failed:', err);
+    } finally {
+      setReconcilingSlots(false);
     }
   };
 
@@ -1707,79 +1819,512 @@ function AdminPortalContent() {
       )}
 
       {/* ========================================================================= */}
-      {/* SECTION H: SLOT AND CAPACITY MANAGEMENT                                   */}
+      {/* SECTION H: SLOT AND CAPACITY MANAGEMENT (HYBRID ENFORCEMENT)               */}
       {/* ========================================================================= */}
       {!isOfficer && activeTab === 'slots' && (
-        <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-5">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b-2 border-gray-100 pb-3">
+        <div className="bg-white rounded-bento border-[2px] border-navy-border p-6 shadow-bento space-y-6">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b-2 border-gray-100 pb-4">
             <div>
-              <span className="text-xs font-bold text-forest uppercase tracking-wider">Capacity Manager</span>
-              <h2 className="text-lg font-display font-black text-navy-border">
-                Slot Availability & Capacity Ledger
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-forest/10 text-forest text-[11px] font-black uppercase tracking-wider border border-forest/20">
+                  Hybrid Capacity Manager
+                </span>
+                <span className="text-[11px] font-bold text-gray-500">
+                  (Farmer Limit + Weight Capacity)
+                </span>
+              </div>
+              <h2 className="text-xl font-display font-black text-navy-border mt-1">
+                20-Minute Slot Availability & Limits Ledger
               </h2>
+              <p className="text-xs text-gray-600 mt-0.5">
+                Every booking verifies that both farmer count and weight capacity are available. Slots turn RED when either limit is reached.
+              </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={slotsDateFilter}
-                onChange={(e) => setSlotsDateFilter(e.target.value)}
-                className="bg-gray-50 border border-navy-border rounded-lg px-2.5 py-1 text-xs font-bold"
-              />
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-navy-border rounded-xl px-3 py-1.5 shadow-sm">
+                <CalendarDays className="w-3.5 h-3.5 text-forest" />
+                <input
+                  type="date"
+                  value={slotsDateFilter}
+                  onChange={(e) => setSlotsDateFilter(e.target.value)}
+                  className="bg-transparent text-xs font-black text-navy-border focus:outline-none cursor-pointer"
+                />
+              </div>
+
               <button
+                type="button"
                 onClick={loadSlots}
-                className="px-3 py-1 bg-forest text-white rounded-lg text-xs font-bold"
+                disabled={loadingSlots}
+                className="px-3.5 py-2 bg-forest text-white rounded-xl text-xs font-black border border-navy-border shadow-sm hover:bg-forest-light transition-all flex items-center gap-1.5"
               >
-                Reload
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingSlots ? 'animate-spin' : ''}`} />
+                <span>Reload</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleReconcileSlots(null)}
+                disabled={reconcilingSlots}
+                title="Recalculate all slot counters directly from active booking records in MySQL"
+                className="px-3 py-2 bg-amber-50 text-amber-900 border border-amber-300 rounded-xl text-xs font-black hover:bg-amber-100 transition-all flex items-center gap-1.5"
+              >
+                <Database className={`w-3.5 h-3.5 ${reconcilingSlots ? 'animate-spin' : ''}`} />
+                <span>{reconcilingSlots ? 'Reconciling...' : 'Reconcile DB Counters'}</span>
               </button>
             </div>
           </div>
 
+          {/* Quick Filter Tabs */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-mint-foam/40 p-2.5 rounded-2xl border border-emerald-200">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[
+                { id: 'ALL', label: 'All Slots', count: slotsList.length },
+                {
+                  id: 'Available',
+                  label: 'Available',
+                  count: slotsList.filter(s => s.Slot_Status !== 'Closed' && Number(s.Booked_Count || 0) < Number(s.Max_Bookings || 5) && Number(s.Remaining_Capacity_Tons || 0) > 0).length
+                },
+                {
+                  id: 'Full',
+                  label: 'Fully Booked',
+                  count: slotsList.filter(s => s.Slot_Status !== 'Closed' && (Number(s.Booked_Count || 0) >= Number(s.Max_Bookings || 5) || Number(s.Remaining_Capacity_Tons || 0) <= 0)).length
+                },
+                {
+                  id: 'Closed',
+                  label: 'Closed',
+                  count: slotsList.filter(s => s.Slot_Status === 'Closed').length
+                }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSlotStatusFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                    slotStatusFilter === tab.id
+                      ? 'bg-forest text-white shadow-sm'
+                      : 'bg-white text-gray-700 border border-gray-200 hover:border-navy-border'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    slotStatusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="text-[11px] font-bold text-gray-500">
+              Showing date: <span className="text-navy-border font-black">{slotsDateFilter}</span>
+            </div>
+          </div>
+
           {loadingSlots ? (
-            <div className="py-12 text-center text-sm font-bold text-gray-500">
-              <RefreshCw className="w-5 h-5 animate-spin mx-auto text-forest mb-2" />
-              Loading slots from database...
+            <div className="py-16 text-center text-sm font-bold text-gray-500">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-forest mb-2" />
+              Querying slots, limits, and capacity from MySQL...
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
               <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b-2 border-gray-200 text-gray-400 font-mono uppercase text-[10px]">
-                    <th className="py-2.5 px-3">Slot ID</th>
-                    <th className="py-2.5 px-3">Time Window</th>
-                    <th className="py-2.5 px-3">Max Capacity</th>
-                    <th className="py-2.5 px-3">Booked</th>
-                    <th className="py-2.5 px-3">Remaining</th>
-                    <th className="py-2.5 px-3">Status</th>
+                  <tr className="bg-gray-100 border-b-2 border-gray-200 text-gray-600 font-mono uppercase text-[10px]">
+                    <th className="py-3 px-3">Slot</th>
+                    <th className="py-3 px-3 text-center">Max Farmers</th>
+                    <th className="py-3 px-3 text-center">Booked</th>
+                    <th className="py-3 px-3 text-center">Remaining</th>
+                    <th className="py-3 px-3 text-right">Weight Limit</th>
+                    <th className="py-3 px-3 text-right">Weight Booked</th>
+                    <th className="py-3 px-3 text-right">Remaining Wt</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-3 text-right">Admin Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
-                  {slotsList.map((s) => (
-                    <tr key={s.Slot_ID} className="hover:bg-gray-50">
-                      <td className="py-3 px-3 font-mono font-bold">#{s.Slot_ID}</td>
-                      <td className="py-3 px-3 font-bold">
-                        {s.Start_Time?.slice(0, 5)} - {s.End_Time?.slice(0, 5)}
-                      </td>
-                      <td className="py-3 px-3">{s.Max_Capacity_Tons} Tons</td>
-                      <td className="py-3 px-3">{s.Booked_Capacity_Tons} Tons</td>
-                      <td className="py-3 px-3 font-black text-forest">
-                        {Number(s.Remaining_Capacity_Tons).toFixed(1)} Tons
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
-                          Number(s.Remaining_Capacity_Tons) > 0
-                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                            : 'bg-rose-100 text-rose-900 border-rose-300'
+                <tbody className="divide-y divide-gray-100 font-medium text-navy-border bg-white">
+                  {slotsList
+                    .filter((s) => {
+                      const maxB = Number(s.Max_Bookings || 5);
+                      const bookedC = Number(s.Booked_Count || 0);
+                      const remTons = Number(s.Remaining_Capacity_Tons !== undefined ? s.Remaining_Capacity_Tons : (Number(s.Max_Capacity_Tons || 50) - Number(s.Booked_Capacity_Tons || 0)));
+                      const isFull = bookedC >= maxB || remTons <= 0;
+                      const isClosed = s.Slot_Status === 'Closed';
+
+                      if (slotStatusFilter === 'Available') return !isClosed && !isFull;
+                      if (slotStatusFilter === 'Full') return !isClosed && isFull;
+                      if (slotStatusFilter === 'Closed') return isClosed;
+                      return true;
+                    })
+                    .map((s) => {
+                      const maxB = Number(s.Max_Bookings || 5);
+                      const bookedC = Number(s.Booked_Count || 0);
+                      const remSpaces = Math.max(0, maxB - bookedC);
+                      const maxCap = Number(s.Max_Capacity_Tons || 50);
+                      const bookedCap = Number(s.Booked_Capacity_Tons || 0);
+                      const remCap = Math.max(0, Number(s.Remaining_Capacity_Tons !== undefined ? s.Remaining_Capacity_Tons : (maxCap - bookedCap)));
+
+                      const isFarmerLimitHit = bookedC >= maxB;
+                      const isWeightLimitHit = remCap <= 0;
+                      const isClosed = s.Slot_Status === 'Closed';
+                      const isFull = !isClosed && (isFarmerLimitHit || isWeightLimitHit);
+                      const isAvailable = !isClosed && !isFull;
+
+                      return (
+                        <tr key={s.Slot_ID} className={`hover:bg-gray-50/80 transition-colors ${
+                          isClosed ? 'bg-gray-50/60' : isFull ? 'bg-rose-50/30' : ''
                         }`}>
-                          {Number(s.Remaining_Capacity_Tons) > 0 ? '🟢 Available' : '🔴 Full'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                          <td className="py-3 px-3">
+                            <div className="font-extrabold text-navy-border">
+                              {s.Start_Time?.slice(0, 5)} - {s.End_Time?.slice(0, 5)}
+                            </div>
+                            <div className="text-[10px] font-mono text-gray-500 font-bold">
+                              Slot #{s.Slot_ID}
+                            </div>
+                          </td>
+
+                          <td className="py-3 px-3 text-center font-bold">
+                            <span className="px-2 py-0.5 rounded-md bg-gray-100 font-mono text-gray-800 border border-gray-200">
+                              {maxB}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 text-center font-bold">
+                            <span className={`px-2 py-0.5 rounded-md font-mono ${
+                              bookedC > 0 ? 'bg-amber-100 text-amber-900 font-extrabold' : 'text-gray-500'
+                            }`}>
+                              {bookedC}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 text-center font-extrabold">
+                            <span className={`px-2 py-0.5 rounded-md font-mono text-[11px] ${
+                              remSpaces === 0 
+                                ? 'bg-rose-100 text-rose-800 font-black' 
+                                : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`}>
+                              {remSpaces}
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 text-right font-bold text-gray-700 font-mono">
+                            {maxCap.toFixed(1)} T
+                          </td>
+
+                          <td className="py-3 px-3 text-right font-bold font-mono">
+                            <span className={bookedCap > 0 ? 'text-amber-800' : 'text-gray-400'}>
+                              {bookedCap.toFixed(1)} T
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 text-right font-extrabold font-mono text-forest">
+                            <span className={remCap <= 0 ? 'text-rose-700 font-black' : 'text-forest font-black'}>
+                              {remCap.toFixed(1)} T
+                            </span>
+                          </td>
+
+                          <td className="py-3 px-3 text-center">
+                            {isClosed ? (
+                              <span className="px-2 py-1 rounded-md text-[10px] font-black uppercase border bg-gray-100 text-gray-700 border-gray-300">
+                                ⚪ Closed
+                              </span>
+                            ) : isFull ? (
+                              <span className="px-2 py-1 rounded-md text-[10px] font-black uppercase border bg-rose-100 text-rose-900 border-rose-300" title={
+                                isFarmerLimitHit && isWeightLimitHit
+                                  ? 'Both limits reached'
+                                  : isFarmerLimitHit
+                                  ? 'Max 5 farmers reached'
+                                  : 'Max weight capacity reached'
+                              }>
+                                🔴 Full {isFarmerLimitHit ? '(Farmers)' : '(Weight)'}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 rounded-md text-[10px] font-black uppercase border bg-emerald-100 text-emerald-900 border-emerald-300">
+                                🟢 Available
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSlotBookings(s)}
+                                title="View active and historical bookings for this slot"
+                                className="px-2.5 py-1 bg-mint-foam text-forest rounded-lg text-[11px] font-black border border-emerald-300 hover:bg-forest hover:text-white transition-all"
+                              >
+                                Bookings ({bookedC})
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditSlot(s)}
+                                title="Change max farmer limit, weight capacity, or open/close status"
+                                className="px-2.5 py-1 bg-gray-100 hover:bg-forest hover:text-white text-navy-border rounded-lg text-[11px] font-bold border border-gray-300 transition-all"
+                              >
+                                Limits
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleToggleSlotStatus(s)}
+                                title={isClosed ? 'Reopen slot for bookings' : 'Close slot administratively'}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-all ${
+                                  isClosed 
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100' 
+                                    : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                                }`}
+                              >
+                                {isClosed ? 'Reopen' : 'Close'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
           )}
+
+          {/* EDIT SLOT LIMITS MODAL */}
+          {editingSlot && (
+            <div className="fixed inset-0 bg-navy-border/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 max-w-lg w-full shadow-bento space-y-5">
+                <div className="flex items-center justify-between border-b-2 border-gray-100 pb-3">
+                  <div>
+                    <span className="text-[10px] font-black text-forest uppercase tracking-wider">
+                      Slot Capacity Configuration
+                    </span>
+                    <h3 className="text-lg font-display font-black text-navy-border">
+                      Adjust Slot Limits (Slot #{editingSlot.Slot_ID})
+                    </h3>
+                    <p className="text-xs text-gray-500 font-semibold mt-0.5">
+                      Window: {editingSlot.Start_Time?.slice(0, 5)} - {editingSlot.End_Time?.slice(0, 5)} on {slotsDateFilter}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingSlot(null)}
+                    className="p-1 rounded-lg text-gray-400 hover:text-navy-border"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {slotLimitError && (
+                  <div className="bg-rose-50 border-2 border-rose-400 rounded-xl p-3 text-rose-900 text-xs font-bold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-600" />
+                    <span>{slotLimitError}</span>
+                  </div>
+                )}
+
+                {slotLimitSuccess && (
+                  <div className="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-3 text-emerald-900 text-xs font-bold flex items-center gap-2">
+                    <Check className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                    <span>{slotLimitSuccess}</span>
+                  </div>
+                )}
+
+                {/* Current Actual Utilization Warning */}
+                <div className="bg-amber-50/80 border border-amber-300 rounded-xl p-3.5 space-y-1.5 text-xs">
+                  <div className="font-extrabold text-amber-900 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-700" /> Active Database Utilization Safeguard
+                  </div>
+                  <div className="text-gray-700 leading-relaxed">
+                    Currently booked: <span className="font-bold text-navy-border">{editingSlot.Booked_Count || 0} farmer(s)</span> and <span className="font-bold text-navy-border">{Number(editingSlot.Booked_Capacity_Tons || 0).toFixed(2)} tons</span>.
+                    You cannot reduce limits below these active values.
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Max Farmers Input */}
+                  <div>
+                    <label className="block text-xs font-black text-navy-border uppercase tracking-wider mb-1">
+                      Maximum Farmers Allowed (Max_Bookings)
+                    </label>
+                    <input
+                      type="number"
+                      min={editingSlot.Booked_Count || 1}
+                      max="50"
+                      step="1"
+                      value={editingSlot.newMaxBookings}
+                      onChange={(e) => setEditingSlot({ ...editingSlot, newMaxBookings: e.target.value })}
+                      className="w-full bg-gray-50 border-2 border-navy-border rounded-xl px-3.5 py-2 text-sm font-black text-navy-border focus:bg-white focus:outline-none"
+                    />
+                    <span className="text-[10px] text-gray-500 font-semibold block mt-1">
+                      Default is 5 farmers per 20-minute window. Must be ≥ {editingSlot.Booked_Count || 0}.
+                    </span>
+                  </div>
+
+                  {/* Max Weight Input */}
+                  <div>
+                    <label className="block text-xs font-black text-navy-border uppercase tracking-wider mb-1">
+                      Maximum Weight Capacity (Tons)
+                    </label>
+                    <input
+                      type="number"
+                      min={editingSlot.Booked_Capacity_Tons || 1}
+                      max="200"
+                      step="0.5"
+                      value={editingSlot.newMaxCapacity}
+                      onChange={(e) => setEditingSlot({ ...editingSlot, newMaxCapacity: e.target.value })}
+                      className="w-full bg-gray-50 border-2 border-navy-border rounded-xl px-3.5 py-2 text-sm font-black text-navy-border focus:bg-white focus:outline-none"
+                    />
+                    <span className="text-[10px] text-gray-500 font-semibold block mt-1">
+                      Default is 50.0 tons per 20-minute window. Must be ≥ {Number(editingSlot.Booked_Capacity_Tons || 0).toFixed(2)}T.
+                    </span>
+                  </div>
+
+                  {/* Operational Status Selector */}
+                  <div>
+                    <label className="block text-xs font-black text-navy-border uppercase tracking-wider mb-1">
+                      Slot Status
+                    </label>
+                    <select
+                      value={editingSlot.newStatus}
+                      onChange={(e) => setEditingSlot({ ...editingSlot, newStatus: e.target.value })}
+                      className="w-full bg-gray-50 border-2 border-navy-border rounded-xl px-3.5 py-2 text-sm font-bold text-navy-border focus:bg-white focus:outline-none"
+                    >
+                      <option value="Available">Available (Open for farmer booking)</option>
+                      <option value="Closed">Closed (Administratively locked)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setEditingSlot(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-100 border border-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingSlotLimits}
+                    onClick={handleSaveSlotLimits}
+                    className="px-5 py-2.5 rounded-xl text-xs font-black bg-forest hover:bg-forest-light text-white border border-navy-border shadow-bento flex items-center gap-2 transition-all disabled:opacity-50"
+                  >
+                    {savingSlotLimits ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Updating MySQL...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-saffron" />
+                        <span>Save & Enforce Limits</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* INSPECT ACTUAL SLOT BOOKINGS MODAL */}
+          {slotBookingsModal.open && slotBookingsModal.slot && (
+            <div className="fixed inset-0 bg-navy-border/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="bg-white rounded-bento border-[2.5px] border-navy-border p-6 max-w-2xl w-full shadow-bento space-y-4 max-h-[85vh] flex flex-col">
+                <div className="flex items-center justify-between border-b-2 border-gray-100 pb-3 flex-shrink-0">
+                  <div>
+                    <span className="text-[10px] font-black text-forest uppercase tracking-wider">
+                      Slot Booking Roster
+                    </span>
+                    <h3 className="text-lg font-display font-black text-navy-border">
+                      Bookings for Slot #{slotBookingsModal.slot.Slot_ID} ({slotBookingsModal.slot.Start_Time?.slice(0, 5)} - {slotBookingsModal.slot.End_Time?.slice(0, 5)})
+                    </h3>
+                    <p className="text-xs text-gray-500 font-semibold">
+                      Date: {slotsDateFilter} • Booked: {slotBookingsModal.slot.Booked_Count || 0}/{slotBookingsModal.slot.Max_Bookings || 5} Farmers • Weight: {Number(slotBookingsModal.slot.Booked_Capacity_Tons || 0).toFixed(1)}/{Number(slotBookingsModal.slot.Max_Capacity_Tons || 50).toFixed(1)} Tons
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSlotBookingsModal({ open: false, slot: null, bookings: [], loading: false })}
+                    className="p-1 rounded-lg text-gray-400 hover:text-navy-border"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="overflow-y-auto flex-1">
+                  {slotBookingsModal.loading ? (
+                    <div className="py-12 text-center text-xs font-bold text-gray-500">
+                      <RefreshCw className="w-5 h-5 animate-spin mx-auto text-forest mb-2" />
+                      Loading bookings from MySQL...
+                    </div>
+                  ) : slotBookingsModal.bookings.length === 0 ? (
+                    <div className="py-12 text-center text-xs font-bold text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                      No farmer bookings recorded for this time slot.
+                    </div>
+                  ) : (
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b-2 border-gray-200 text-gray-400 font-mono uppercase text-[10px]">
+                          <th className="py-2 px-2">Token</th>
+                          <th className="py-2 px-2">Farmer</th>
+                          <th className="py-2 px-2">Commodity</th>
+                          <th className="py-2 px-2 text-right">Weight</th>
+                          <th className="py-2 px-2 text-center">Status</th>
+                          <th className="py-2 px-2 text-right">Reserved At</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 font-medium text-navy-border">
+                        {slotBookingsModal.bookings.map((b) => (
+                          <tr key={b.Booking_ID || b.Token_Number} className="hover:bg-gray-50">
+                            <td className="py-2.5 px-2 font-mono font-black text-forest">
+                              {b.Token_Number}
+                            </td>
+                            <td className="py-2.5 px-2">
+                              <div className="font-bold">{b.Farmer_Name || 'Farmer'}</div>
+                              <div className="text-[10px] text-gray-500">{b.Farmer_Phone || b.Phone || ''}</div>
+                            </td>
+                            <td className="py-2.5 px-2 font-semibold">
+                              {b.Produce_Name || 'Produce'}
+                            </td>
+                            <td className="py-2.5 px-2 text-right font-black font-mono">
+                              {Number(b.Estimated_Weight_Tons || 0).toFixed(1)} T
+                            </td>
+                            <td className="py-2.5 px-2 text-center">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${
+                                b.Booking_Status === 'Confirmed'
+                                  ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                  : b.Booking_Status === 'Checked-In'
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : b.Booking_Status === 'Completed'
+                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                  : 'bg-rose-100 text-rose-900 border-rose-300'
+                              }`}>
+                                {b.Booking_Status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-2 text-right text-[10px] text-gray-500 font-mono">
+                              {b.Created_At ? String(b.Created_At).slice(0, 16).replace('T', ' ') : '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-gray-100 flex-shrink-0 text-xs text-gray-600">
+                  <span>
+                    Total Active Bookings: <span className="font-bold text-navy-border">{slotBookingsModal.bookings.filter(b => b.Booking_Status !== 'Cancelled').length}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSlotBookingsModal({ open: false, slot: null, bookings: [], loading: false })}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-navy-border rounded-xl text-xs font-bold"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 

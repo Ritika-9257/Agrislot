@@ -85,7 +85,11 @@ const BookingService = {
         throw new AppError(`Slot with ID ${Slot_ID} does not exist`, 404, 'SLOT_NOT_FOUND');
       }
 
-      // 4. Validate slot date (cannot book past date)
+      // 4. Validate slot status and date
+      if (slot.Slot_Status === 'Closed') {
+        throw new AppError('This time-slot has been administratively closed for bookings', 400, 'SLOT_CLOSED');
+      }
+
       const todayStr = new Date().toISOString().split('T')[0];
       const slotDateStr = typeof slot.Slot_Date === 'string' 
         ? slot.Slot_Date.split('T')[0] 
@@ -95,16 +99,28 @@ const BookingService = {
         throw new AppError(`Cannot book slot for past date (${slotDateStr})`, 400, 'PAST_DATE_NOT_BOOKABLE');
       }
 
-      // 5. Concurrency & capacity check
+      // 5. Hybrid Capacity & Concurrency Checks (Both limits must pass)
+      // Check 5A: Maximum Farmer Limit
+      const maxBookings = parseInt(slot.Max_Bookings, 10) || 5;
+      const bookedCount = parseInt(slot.Booked_Count, 10) || 0;
+      if (bookedCount >= maxBookings) {
+        throw new AppError(
+          `Slot is fully booked. Maximum farmer limit reached (${bookedCount}/${maxBookings} farmers reserved).`,
+          409,
+          'SLOT_FARMER_LIMIT_REACHED'
+        );
+      }
+
+      // Check 5B: Maximum Total Weight Capacity
       const maxCapacity = parseFloat(slot.Max_Capacity_Tons);
       const bookedCapacity = parseFloat(slot.Booked_Capacity_Tons);
-      const remainingCapacity = maxCapacity - bookedCapacity;
+      const remainingCapacity = Math.max(0, maxCapacity - bookedCapacity);
 
       if (requestedWeight > remainingCapacity) {
         throw new AppError(
-          `Insufficient slot capacity. Requested: ${requestedWeight} tons, Available: ${remainingCapacity.toFixed(2)} tons`,
+          `Insufficient slot weight capacity. Requested: ${requestedWeight} tons, Available: ${remainingCapacity.toFixed(2)} tons`,
           409,
-          'INSUFFICIENT_CAPACITY'
+          'INSUFFICIENT_WEIGHT_CAPACITY'
         );
       }
 
@@ -138,8 +154,8 @@ const BookingService = {
         throw new AppError('Unable to generate unique gate pass token after several attempts', 500, 'TOKEN_GENERATION_FAILED');
       }
 
-      // 7. Atomically increment slot booked capacity
-      await SlotRepository.incrementBookedCapacity(Slot_ID, requestedWeight, connection);
+      // 7. Atomically increment slot booked count and booked capacity
+      await SlotRepository.incrementSlotBooking(Slot_ID, requestedWeight, connection);
 
       // 8. Commit atomic transaction
       await connection.commit();
@@ -223,9 +239,9 @@ const BookingService = {
       // 1. Update status to Cancelled
       await BookingRepository.updateStatus(bookingId, 'Cancelled', connection);
 
-      // 2. Decrement slot capacity atomically
+      // 2. Decrement slot farmer count and weight capacity atomically
       const weightToRelease = parseFloat(booking.Estimated_Weight_Tons);
-      await SlotRepository.decrementBookedCapacity(booking.Slot_ID, weightToRelease, connection);
+      await SlotRepository.decrementSlotBooking(booking.Slot_ID, weightToRelease, connection);
 
       // 3. Commit
       await connection.commit();

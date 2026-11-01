@@ -157,7 +157,13 @@ function FarmerPortalContent() {
         if (res?.data && Array.isArray(res.data)) {
           setDbSlots(res.data);
           // Auto-select first available slot if nothing is selected or current selection is full
-          const firstAvailable = res.data.find(s => Number(s.Remaining_Capacity_Tons) > 0);
+          const reqWeight = parseFloat(quantityTons) || 0.5;
+          const firstAvailable = res.data.find(s => {
+            const maxBookings = Number(s.Max_Bookings) || 5;
+            const bookedCount = Number(s.Booked_Count) || 0;
+            const remCap = Number(s.Remaining_Capacity_Tons !== undefined ? s.Remaining_Capacity_Tons : (Number(s.Max_Capacity_Tons || 50) - Number(s.Booked_Capacity_Tons || 0)));
+            return s.Slot_Status !== 'Closed' && bookedCount < maxBookings && remCap >= reqWeight;
+          });
           if (firstAvailable) {
             setSelectedSlotId(firstAvailable.Slot_ID);
           } else if (res.data.length > 0) {
@@ -326,6 +332,63 @@ function FarmerPortalContent() {
 
   const getDbSlotForConfig = (cfg) => {
     return dbSlots.find(s => s.Start_Time === cfg.startTime);
+  };
+
+  const getSlotHybridStatus = (dbRow, reqWeight) => {
+    if (!dbRow) {
+      return {
+        isAvailable: true,
+        isFull: false,
+        isClosed: false,
+        remainingSpaces: 5,
+        maxBookings: 5,
+        bookedCount: 0,
+        remainingTons: 50.0,
+        maxCap: 50.0,
+        bookedCap: 0.0,
+        reason: null
+      };
+    }
+
+    const maxBookings = Number(dbRow.Max_Bookings) || 5;
+    const bookedCount = Number(dbRow.Booked_Count) || 0;
+    const remainingSpaces = Math.max(0, maxBookings - bookedCount);
+
+    const maxCap = Number(dbRow.Max_Capacity_Tons) || 50.0;
+    const bookedCap = Number(dbRow.Booked_Capacity_Tons) || 0.0;
+    const remainingTons = Math.max(
+      0.0,
+      Number(dbRow.Remaining_Capacity_Tons !== undefined ? dbRow.Remaining_Capacity_Tons : (maxCap - bookedCap))
+    );
+
+    const isClosed = dbRow.Slot_Status === 'Closed';
+    const isFarmerLimitHit = bookedCount >= maxBookings;
+    const isWeightLimitHit = remainingTons <= 0 || (reqWeight > 0 && reqWeight > remainingTons);
+
+    const isFull = isFarmerLimitHit || isWeightLimitHit;
+    const isAvailable = !isClosed && !isFull;
+
+    let reason = null;
+    if (isClosed) reason = 'Slot Closed';
+    else if (isFarmerLimitHit && remainingTons <= 0) reason = 'Both Limits Full';
+    else if (isFarmerLimitHit) reason = 'Max Farmers (5/5)';
+    else if (remainingTons <= 0) reason = 'Weight Capacity Full';
+    else if (reqWeight > remainingTons) reason = `Exceeds Capacity (${remainingTons.toFixed(1)}T left)`;
+
+    return {
+      isAvailable,
+      isFull,
+      isClosed,
+      isFarmerLimitHit,
+      isWeightLimitHit,
+      remainingSpaces,
+      maxBookings,
+      bookedCount,
+      remainingTons,
+      maxCap,
+      bookedCap,
+      reason
+    };
   };
 
   const selectedSlotRecord = dbSlots.find(s => s.Slot_ID === selectedSlotId);
@@ -614,47 +677,67 @@ function FarmerPortalContent() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {morningConfigs.map((cfg) => {
                       const dbRow = getDbSlotForConfig(cfg);
-                      const isBooked = dbRow ? Number(dbRow.Remaining_Capacity_Tons) <= 0 : false;
+                      const reqWeight = parseFloat(quantityTons) || 0.5;
+                      const status = getSlotHybridStatus(dbRow, reqWeight);
                       const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
-                      const remainingTons = dbRow ? Number(dbRow.Remaining_Capacity_Tons) : 50;
 
                       return (
                         <button
                           key={cfg.id}
                           type="button"
-                          disabled={isBooked}
+                          disabled={!status.isAvailable}
                           onClick={() => {
-                            if (dbRow) setSelectedSlotId(dbRow.Slot_ID);
+                            if (dbRow && status.isAvailable) setSelectedSlotId(dbRow.Slot_ID);
                           }}
-                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between h-24 ${
+                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between min-h-[104px] ${
                             isSelected
                               ? 'bg-blue-600 border-navy-border text-white shadow-bento scale-[1.03] z-10'
-                              : isBooked
-                              ? 'bg-rose-50 border-rose-300 text-rose-800 opacity-75 cursor-not-allowed'
+                              : status.isClosed
+                              ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-75'
+                              : status.isFull
+                              ? 'bg-rose-50 border-rose-300 text-rose-950 cursor-not-allowed opacity-90'
                               : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
                           }`}
                         >
                           <div>
-                            <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-75">
-                              {cfg.id}
+                            <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider">
+                              <span className={isSelected ? 'text-blue-100' : 'opacity-70'}>{cfg.id}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                isSelected
+                                  ? 'bg-blue-700 text-white'
+                                  : status.isClosed
+                                  ? 'bg-gray-200 text-gray-700'
+                                  : status.isFull
+                                  ? 'bg-rose-200 text-rose-900'
+                                  : 'bg-emerald-200/90 text-emerald-900'
+                              }`}>
+                                {status.isClosed ? 'Closed' : `${status.remainingSpaces} Spaces Left`}
+                              </span>
                             </div>
-                            <div className="text-xs font-black mt-0.5 leading-snug">
+                            <div className="text-xs font-black mt-1 leading-snug">
                               {cfg.label.replace(' - ', ' to ')}
+                            </div>
+                            <div className="text-[10px] font-bold mt-0.5 opacity-80">
+                              👥 {status.bookedCount} / {status.maxBookings} Farmers
                             </div>
                           </div>
 
-                          <div className="mt-2 flex items-center justify-between text-[11px] font-extrabold">
+                          <div className="mt-2 pt-1 border-t border-black/10 flex items-center justify-between text-[11px] font-extrabold">
                             {isSelected ? (
-                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-1.5 py-0.5 rounded">
-                                <Check className="w-3 h-3" /> Selected
+                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                <Check className="w-3 h-3" /> Selected ({status.remainingTons.toFixed(1)}T Free)
                               </span>
-                            ) : isBooked ? (
-                              <span className="text-rose-700 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🔴 FULL
+                            ) : status.isClosed ? (
+                              <span className="text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🔒 Closed
+                              </span>
+                            ) : status.isFull ? (
+                              <span className="text-rose-800 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black truncate max-w-full" title={status.reason}>
+                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (${status.remainingTons.toFixed(1)}T Left)`}
                               </span>
                             ) : (
-                              <span className="text-emerald-800 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🟢 {remainingTons.toFixed(1)}T Free
+                              <span className="text-emerald-900 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🟢 {status.remainingTons.toFixed(1)}T Free
                               </span>
                             )}
                           </div>
@@ -687,47 +770,67 @@ function FarmerPortalContent() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {afternoonConfigs.map((cfg) => {
                       const dbRow = getDbSlotForConfig(cfg);
-                      const isBooked = dbRow ? Number(dbRow.Remaining_Capacity_Tons) <= 0 : false;
+                      const reqWeight = parseFloat(quantityTons) || 0.5;
+                      const status = getSlotHybridStatus(dbRow, reqWeight);
                       const isSelected = dbRow ? selectedSlotId === dbRow.Slot_ID : false;
-                      const remainingTons = dbRow ? Number(dbRow.Remaining_Capacity_Tons) : 50;
 
                       return (
                         <button
                           key={cfg.id}
                           type="button"
-                          disabled={isBooked}
+                          disabled={!status.isAvailable}
                           onClick={() => {
-                            if (dbRow) setSelectedSlotId(dbRow.Slot_ID);
+                            if (dbRow && status.isAvailable) setSelectedSlotId(dbRow.Slot_ID);
                           }}
-                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between h-24 ${
+                          className={`p-3 rounded-xl border-2 text-left transition-all relative flex flex-col justify-between min-h-[104px] ${
                             isSelected
                               ? 'bg-blue-600 border-navy-border text-white shadow-bento scale-[1.03] z-10'
-                              : isBooked
-                              ? 'bg-rose-50 border-rose-300 text-rose-800 opacity-75 cursor-not-allowed'
+                              : status.isClosed
+                              ? 'bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed opacity-75'
+                              : status.isFull
+                              ? 'bg-rose-50 border-rose-300 text-rose-950 cursor-not-allowed opacity-90'
                               : 'bg-emerald-50 hover:bg-emerald-100 border-emerald-600 text-emerald-950 shadow-sm hover:scale-[1.02] cursor-pointer'
                           }`}
                         >
                           <div>
-                            <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-75">
-                              {cfg.id}
+                            <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider">
+                              <span className={isSelected ? 'text-blue-100' : 'opacity-70'}>{cfg.id}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                isSelected
+                                  ? 'bg-blue-700 text-white'
+                                  : status.isClosed
+                                  ? 'bg-gray-200 text-gray-700'
+                                  : status.isFull
+                                  ? 'bg-rose-200 text-rose-900'
+                                  : 'bg-emerald-200/90 text-emerald-900'
+                              }`}>
+                                {status.isClosed ? 'Closed' : `${status.remainingSpaces} Spaces Left`}
+                              </span>
                             </div>
-                            <div className="text-xs font-black mt-0.5 leading-snug">
+                            <div className="text-xs font-black mt-1 leading-snug">
                               {cfg.label.replace(' - ', ' to ')}
+                            </div>
+                            <div className="text-[10px] font-bold mt-0.5 opacity-80">
+                              👥 {status.bookedCount} / {status.maxBookings} Farmers
                             </div>
                           </div>
 
-                          <div className="mt-2 flex items-center justify-between text-[11px] font-extrabold">
+                          <div className="mt-2 pt-1 border-t border-black/10 flex items-center justify-between text-[11px] font-extrabold">
                             {isSelected ? (
-                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-1.5 py-0.5 rounded">
-                                <Check className="w-3 h-3" /> Selected
+                              <span className="flex items-center gap-1 font-black bg-white text-blue-700 px-2 py-0.5 rounded text-[10px] shadow-sm">
+                                <Check className="w-3 h-3" /> Selected ({status.remainingTons.toFixed(1)}T Free)
                               </span>
-                            ) : isBooked ? (
-                              <span className="text-rose-700 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🔴 FULL
+                            ) : status.isClosed ? (
+                              <span className="text-gray-700 bg-gray-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🔒 Closed
+                              </span>
+                            ) : status.isFull ? (
+                              <span className="text-rose-800 bg-rose-200 px-1.5 py-0.5 rounded text-[10px] font-black truncate max-w-full" title={status.reason}>
+                                🔴 {status.bookedCount >= status.maxBookings ? 'FULL (0 Spaces)' : `FULL (${status.remainingTons.toFixed(1)}T Left)`}
                               </span>
                             ) : (
-                              <span className="text-emerald-800 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
-                                🟢 {remainingTons.toFixed(1)}T Free
+                              <span className="text-emerald-900 bg-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-black">
+                                🟢 {status.remainingTons.toFixed(1)}T Free
                               </span>
                             )}
                           </div>
@@ -751,6 +854,11 @@ function FarmerPortalContent() {
                 </div>
                 <div className="text-xs text-gray-600 font-semibold mt-0.5">
                   Date: <span className="font-bold text-navy-border">{bookingDate}</span> • Commodity: <span className="font-bold text-navy-border">{produceList.find(p => p.Produce_ID === Number(selectedProduceId))?.Produce_Name || 'Produce'}</span> • Weight: <span className="font-bold text-navy-border">{quantityTons} Tons</span>
+                  {selectedSlotRecord && (
+                    <span className="ml-2 pl-2 border-l border-gray-300 font-bold text-emerald-800">
+                      • {Math.max(0, (selectedSlotRecord.Max_Bookings || 5) - (selectedSlotRecord.Booked_Count || 0))} spaces left • {Number(selectedSlotRecord.Remaining_Capacity_Tons || 50).toFixed(1)}T free
+                    </span>
+                  )}
                 </div>
               </div>
 

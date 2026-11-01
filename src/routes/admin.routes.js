@@ -47,8 +47,13 @@ router.patch(
 router.get('/farmers', FarmerController.getAllFarmers);
 router.get('/farmers/:id', FarmerController.getFarmerById);
 
-// Slot & Mandi Utilization
+// Slot Capacity & Hybrid Limit Management (Admin & Officer oversight; limit updates restricted to Admin)
+router.get('/slots', SlotController.getAllSlots);
 router.get('/slots/utilization', SlotController.getUtilization);
+router.get('/slots/:id/bookings', SlotController.getSlotBookings);
+router.patch('/slots/:id/limits', requireActiveRole('Admin'), SlotController.updateSlotLimits);
+router.post('/slots/:id/reconcile', requireActiveRole('Admin'), SlotController.reconcileSlot);
+router.post('/slots/reconcile-all', requireActiveRole('Admin'), SlotController.reconcileSlot);
 
 // Transaction & Payment Management
 router.get('/transactions', TransactionController.getAllTransactions);

@@ -44,6 +44,50 @@ const SlotController = {
     } catch (err) {
       next(err);
     }
+  },
+
+  async getSlotBookings(req, res, next) {
+    try {
+      const slotId = parseInt(req.params.id, 10);
+      const result = await SlotService.getSlotBookings(slotId);
+      return successResponse(res, {
+        message: 'Slot bookings fetched successfully',
+        data: result
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateSlotLimits(req, res, next) {
+    try {
+      const slotId = parseInt(req.params.id, 10);
+      const { maxBookings, maxCapacityTons, status } = req.body;
+      const updated = await SlotService.updateSlotLimits(
+        slotId,
+        { maxBookings, maxCapacityTons, status },
+        req.user
+      );
+      return successResponse(res, {
+        message: 'Slot limits updated successfully',
+        data: updated
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async reconcileSlot(req, res, next) {
+    try {
+      const slotId = req.params.id ? parseInt(req.params.id, 10) : null;
+      const result = await SlotService.reconcileSlot(slotId);
+      return successResponse(res, {
+        message: 'Slot counters reconciled successfully from active bookings',
+        data: result
+      });
+    } catch (err) {
+      next(err);
+    }
   }
 };
 

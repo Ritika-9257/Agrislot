@@ -63,7 +63,8 @@ const REQUIRED_ROUTINES = [
   'Display_All_Farmers',
   'Display_First_Five_Farmers',
   'Search_Farmers_Paginated',
-  'Search_Farmers_Filtered'
+  'Search_Farmers_Filtered',
+  'Reconcile_Slot_Counters'
 ];
 
 const REQUIRED_TRIGGERS = [

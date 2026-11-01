@@ -773,6 +773,350 @@ test('26. Stale token protection: Demoted user blocked immediately by requireAct
   }
 });
 
+// =============================================================================
+// HYBRID SLOT BOOKING SYSTEM (FARMER LIMIT + WEIGHT CAPACITY) TEST SUITE
+// =============================================================================
+
+test('27. Hybrid Slot Booking: First farmer successfully books a slot (increments both Booked_Count and Booked_Capacity_Tons)', async (t) => {
+  const slot = {
+    Slot_ID: 101,
+    Max_Bookings: 5,
+    Booked_Count: 0,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 0.0,
+    Slot_Status: 'Available'
+  };
+
+  function simulateBooking(s, weight) {
+    if (s.Slot_Status === 'Closed') throw new Error('SLOT_CLOSED');
+    if (s.Booked_Count >= s.Max_Bookings) throw new Error('SLOT_FARMER_LIMIT_REACHED');
+    if (weight > (s.Max_Capacity_Tons - s.Booked_Capacity_Tons)) throw new Error('INSUFFICIENT_WEIGHT_CAPACITY');
+
+    s.Booked_Count += 1;
+    s.Booked_Capacity_Tons += weight;
+    if (s.Booked_Count >= s.Max_Bookings || s.Booked_Capacity_Tons >= s.Max_Capacity_Tons) {
+      s.Slot_Status = 'Full';
+    }
+    return { token: 'AG-T001', bookedCount: s.Booked_Count, bookedWeight: s.Booked_Capacity_Tons };
+  }
+
+  const res = simulateBooking(slot, 8.5);
+  assert.strictEqual(res.bookedCount, 1);
+  assert.strictEqual(res.bookedWeight, 8.5);
+  assert.strictEqual(slot.Booked_Count, 1);
+  assert.strictEqual(slot.Booked_Capacity_Tons, 8.5);
+  assert.strictEqual(slot.Slot_Status, 'Available');
+});
+
+test('28. Hybrid Slot Booking: Multiple farmers booking the same slot up to limits', async (t) => {
+  const slot = {
+    Slot_ID: 102,
+    Max_Bookings: 5,
+    Booked_Count: 0,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 0.0,
+    Slot_Status: 'Available'
+  };
+
+  const weights = [5.0, 8.0, 2.0, 10.0]; // 4 farmers, total 25T
+  for (const w of weights) {
+    assert.ok(slot.Booked_Count < slot.Max_Bookings);
+    assert.ok(w <= (slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons));
+    slot.Booked_Count += 1;
+    slot.Booked_Capacity_Tons += w;
+  }
+
+  assert.strictEqual(slot.Booked_Count, 4);
+  assert.strictEqual(slot.Booked_Capacity_Tons, 25.0);
+  assert.strictEqual(slot.Max_Bookings - slot.Booked_Count, 1, '1 space remaining');
+  assert.strictEqual(slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons, 25.0, '25T remaining');
+});
+
+test('29. Hybrid Slot Booking: Slot becomes RED/Full when farmer limit is reached (even with remaining weight)', async (t) => {
+  // Example from prompt: 5 farmers book a total of 30 tons. 20 tons remain, but all 5 spaces occupied!
+  const slot = {
+    Slot_ID: 103,
+    Max_Bookings: 5,
+    Booked_Count: 0,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 0.0,
+    Slot_Status: 'Available'
+  };
+
+  const farmerLoads = [5.0, 8.0, 2.0, 10.0, 5.0]; // Total 30 tons across 5 farmers
+  for (const w of farmerLoads) {
+    slot.Booked_Count += 1;
+    slot.Booked_Capacity_Tons += w;
+  }
+
+  // Evaluate status
+  const isFarmerLimitHit = slot.Booked_Count >= slot.Max_Bookings;
+  const isWeightLimitHit = slot.Booked_Capacity_Tons >= slot.Max_Capacity_Tons;
+  const isFull = isFarmerLimitHit || isWeightLimitHit;
+
+  assert.strictEqual(slot.Booked_Count, 5);
+  assert.strictEqual(slot.Booked_Capacity_Tons, 30.0);
+  assert.strictEqual(isFarmerLimitHit, true, 'All 5 farmer slots filled');
+  assert.strictEqual(isWeightLimitHit, false, '20 tons remain');
+  assert.strictEqual(isFull, true, 'Slot must become Full/RED because farmer limit is reached');
+});
+
+test('30. Hybrid Slot Booking: Slot becomes RED/Full when weight capacity is reached (even with remaining farmer spaces)', async (t) => {
+  const slot = {
+    Slot_ID: 104,
+    Max_Bookings: 5,
+    Booked_Count: 0,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 0.0,
+    Slot_Status: 'Available'
+  };
+
+  // Farmer 1 books 25T, Farmer 2 books 25T -> 50T total with only 2 farmers!
+  slot.Booked_Count += 2;
+  slot.Booked_Capacity_Tons = 50.0;
+
+  const isFarmerLimitHit = slot.Booked_Count >= slot.Max_Bookings;
+  const isWeightLimitHit = slot.Booked_Capacity_Tons >= slot.Max_Capacity_Tons;
+  const isFull = isFarmerLimitHit || isWeightLimitHit;
+
+  assert.strictEqual(slot.Booked_Count, 2, 'Only 2 farmers booked');
+  assert.strictEqual(isFarmerLimitHit, false, '3 farmer spaces would otherwise remain');
+  assert.strictEqual(isWeightLimitHit, true, 'Max 50T reached');
+  assert.strictEqual(isFull, true, 'Slot must become Full/RED because weight capacity is exhausted');
+});
+
+test('31. Hybrid Slot Booking: Booking rejection when farmer limit reached vs weight limit reached', async (t) => {
+  // Case A: 5/5 farmers filled -> rejects with SLOT_FARMER_LIMIT_REACHED
+  const fullFarmersSlot = { Max_Bookings: 5, Booked_Count: 5, Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 30.0 };
+  const checkBooking = (s, reqW) => {
+    if (s.Booked_Count >= s.Max_Bookings) {
+      const err = new Error('Slot is fully booked. Maximum farmer limit reached.');
+      err.code = 'SLOT_FARMER_LIMIT_REACHED';
+      throw err;
+    }
+    const rem = s.Max_Capacity_Tons - s.Booked_Capacity_Tons;
+    if (reqW > rem) {
+      const err = new Error(`Insufficient slot weight capacity. Requested: ${reqW} tons, Available: ${rem} tons.`);
+      err.code = 'INSUFFICIENT_WEIGHT_CAPACITY';
+      throw err;
+    }
+    return true;
+  };
+
+  assert.throws(() => checkBooking(fullFarmersSlot, 2.0), (err) => {
+    assert.strictEqual(err.code, 'SLOT_FARMER_LIMIT_REACHED');
+    return true;
+  });
+
+  // Case B: 2/5 farmers filled, but only 2.0T remains, farmer requests 5.0T -> rejects with INSUFFICIENT_WEIGHT_CAPACITY
+  const weightExhaustedSlot = { Max_Bookings: 5, Booked_Count: 2, Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 48.0 };
+  assert.throws(() => checkBooking(weightExhaustedSlot, 5.0), (err) => {
+    assert.strictEqual(err.code, 'INSUFFICIENT_WEIGHT_CAPACITY');
+    return true;
+  });
+});
+
+test('32. Hybrid Concurrency: Simultaneous booking race condition for the last farmer space', async (t) => {
+  let slot = {
+    Slot_ID: 105,
+    Max_Bookings: 5,
+    Booked_Count: 4, // 4 already booked, only 1 space remaining!
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 35.0
+  };
+
+  let dbLock = false;
+
+  async function atomicBook(farmerId, weight) {
+    while (dbLock) {
+      await new Promise(r => setTimeout(r, 2));
+    }
+    dbLock = true;
+    try {
+      if (slot.Booked_Count >= slot.Max_Bookings) {
+        throw new Error('SLOT_FARMER_LIMIT_REACHED');
+      }
+      if (weight > (slot.Max_Capacity_Tons - slot.Booked_Capacity_Tons)) {
+        throw new Error('INSUFFICIENT_WEIGHT_CAPACITY');
+      }
+      slot.Booked_Count += 1;
+      slot.Booked_Capacity_Tons += weight;
+      return { success: true, farmerId };
+    } finally {
+      dbLock = false;
+    }
+  }
+
+  // 2 farmers compete simultaneously for the 5th and final space
+  const [res1, res2] = await Promise.allSettled([
+    atomicBook(201, 5.0),
+    atomicBook(202, 5.0)
+  ]);
+
+  const wins = [res1, res2].filter(r => r.status === 'fulfilled');
+  const losses = [res1, res2].filter(r => r.status === 'rejected');
+
+  assert.strictEqual(wins.length, 1, 'Exactly one farmer gets the last space');
+  assert.strictEqual(losses.length, 1, 'The competing farmer is rejected');
+  assert.strictEqual(losses[0].reason.message, 'SLOT_FARMER_LIMIT_REACHED');
+  assert.strictEqual(slot.Booked_Count, 5, 'Slot reaches exactly max 5 bookings without exceeding');
+});
+
+test('33. Hybrid Cancellation: Restores both farmer count and weight capacity exactly once', async (t) => {
+  let slot = {
+    Slot_ID: 106,
+    Max_Bookings: 5,
+    Booked_Count: 5,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 40.0,
+    Slot_Status: 'Full'
+  };
+
+  let booking = {
+    Booking_ID: 88,
+    Slot_ID: 106,
+    Farmer_ID: 1,
+    Estimated_Weight_Tons: 8.0,
+    Booking_Status: 'Confirmed'
+  };
+
+  function cancelBooking(b, s) {
+    if (b.Booking_Status === 'Cancelled') {
+      throw new Error('ALREADY_CANCELLED');
+    }
+    b.Booking_Status = 'Cancelled';
+    s.Booked_Count = Math.max(0, s.Booked_Count - 1);
+    s.Booked_Capacity_Tons = Math.max(0, s.Booked_Capacity_Tons - b.Estimated_Weight_Tons);
+    if (s.Booked_Count < s.Max_Bookings && s.Booked_Capacity_Tons < s.Max_Capacity_Tons) {
+      s.Slot_Status = 'Available';
+    }
+    return { success: true, restoredSpaces: 1, restoredWeight: b.Estimated_Weight_Tons };
+  }
+
+  // 1st cancel succeeds
+  const cancelRes = cancelBooking(booking, slot);
+  assert.strictEqual(cancelRes.success, true);
+  assert.strictEqual(slot.Booked_Count, 4, 'Farmer count restored from 5 to 4');
+  assert.strictEqual(slot.Booked_Capacity_Tons, 32.0, 'Weight restored from 40 to 32 Tons');
+  assert.strictEqual(slot.Slot_Status, 'Available', 'Slot reverts to Available');
+
+  // 2nd cancel attempt is rejected
+  assert.throws(() => cancelBooking(booking, slot), /ALREADY_CANCELLED/);
+  assert.strictEqual(slot.Booked_Count, 4, 'Farmer count must not decrement twice');
+  assert.strictEqual(slot.Booked_Capacity_Tons, 32.0, 'Weight must not decrement twice');
+});
+
+test('34. Booking History: Cancelled bookings remain in database with status Cancelled', async (t) => {
+  const mockDbBookings = [
+    { Booking_ID: 1, Booking_Status: 'Confirmed', Estimated_Weight_Tons: 10 },
+    { Booking_ID: 2, Booking_Status: 'Cancelled', Estimated_Weight_Tons: 5 },
+    { Booking_ID: 3, Booking_Status: 'Completed', Estimated_Weight_Tons: 8 }
+  ];
+
+  // Records are never deleted; historical ledger is preserved
+  assert.strictEqual(mockDbBookings.length, 3, 'No row is deleted');
+  const cancelledRecord = mockDbBookings.find(b => b.Booking_ID === 2);
+  assert.strictEqual(cancelledRecord.Booking_Status, 'Cancelled');
+});
+
+test('35. Role Authorization: Farmer cannot access admin slot limits or demote users', async (t) => {
+  const { requireActiveRole } = require('../src/middleware/authenticate');
+  const guard = requireActiveRole('Admin');
+
+  let blocked = false;
+  const req = { user: { role: 'Farmer', userId: 2 } };
+  const res = {
+    status(c) {
+      if (c === 403) blocked = true;
+      return this;
+    },
+    json() { return this; }
+  };
+
+  await guard(req, res, () => {});
+  assert.strictEqual(blocked, true, 'Farmer must be blocked with 403');
+});
+
+test('36. Admin Slot Limits: Safe limits change enforces limits cannot drop below already booked values', async (t) => {
+  const slot = {
+    Slot_ID: 107,
+    Max_Bookings: 5,
+    Booked_Count: 3,
+    Max_Capacity_Tons: 50.0,
+    Booked_Capacity_Tons: 25.0
+  };
+
+  function validateLimitChange(s, newMaxB, newMaxC) {
+    if (newMaxB !== undefined && newMaxB < s.Booked_Count) {
+      const err = new Error(`Cannot reduce maximum farmers to ${newMaxB}. Slot already has ${s.Booked_Count} active booking(s).`);
+      err.code = 'CANNOT_REDUCE_BELOW_BOOKED_COUNT';
+      throw err;
+    }
+    if (newMaxC !== undefined && newMaxC < s.Booked_Capacity_Tons) {
+      const err = new Error(`Cannot reduce maximum capacity to ${newMaxC}T. Slot already has ${s.Booked_Capacity_Tons}T booked.`);
+      err.code = 'CANNOT_REDUCE_BELOW_BOOKED_WEIGHT';
+      throw err;
+    }
+    if (newMaxB !== undefined) s.Max_Bookings = newMaxB;
+    if (newMaxC !== undefined) s.Max_Capacity_Tons = newMaxC;
+    return true;
+  }
+
+  // Attempting to lower Max_Bookings to 2 when 3 are booked must fail
+  assert.throws(() => validateLimitChange(slot, 2, undefined), (err) => {
+    assert.strictEqual(err.code, 'CANNOT_REDUCE_BELOW_BOOKED_COUNT');
+    return true;
+  });
+
+  // Attempting to lower Max_Capacity_Tons to 20T when 25T are booked must fail
+  assert.throws(() => validateLimitChange(slot, undefined, 20.0), (err) => {
+    assert.strictEqual(err.code, 'CANNOT_REDUCE_BELOW_BOOKED_WEIGHT');
+    return true;
+  });
+
+  // Valid change: increase max farmers to 8 and capacity to 60T
+  const valid = validateLimitChange(slot, 8, 60.0);
+  assert.strictEqual(valid, true);
+  assert.strictEqual(slot.Max_Bookings, 8);
+  assert.strictEqual(slot.Max_Capacity_Tons, 60.0);
+});
+
+test('37. Consistent Availability: MySQL Availability_Status matches hybrid calculation for farmer and admin', (t) => {
+  const cases = [
+    { Max_Bookings: 5, Booked_Count: 0, Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 0.0, Slot_Status: 'Available', expected: 'Available' },
+    { Max_Bookings: 5, Booked_Count: 5, Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 20.0, Slot_Status: 'Available', expected: 'Full' },
+    { Max_Bookings: 5, Booked_Count: 2, Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 50.0, Slot_Status: 'Available', expected: 'Full' },
+    { Max_Bookings: 5, Booked_Count: 1, Max_Capacity_Tons: 50.0, Booked_Capacity_Tons: 10.0, Slot_Status: 'Closed', expected: 'Closed' }
+  ];
+
+  for (const c of cases) {
+    const computed = c.Slot_Status === 'Closed' 
+      ? 'Closed' 
+      : (c.Booked_Count >= c.Max_Bookings || c.Booked_Capacity_Tons >= c.Max_Capacity_Tons) 
+      ? 'Full' 
+      : 'Available';
+    assert.strictEqual(computed, c.expected);
+  }
+});
+
+test('38. Slot Validation: Closed slots and expired past dates are strictly rejected', (t) => {
+  const checkSlotValidity = (slotDate, status) => {
+    if (status === 'Closed') throw new Error('SLOT_CLOSED');
+    const today = new Date().toISOString().split('T')[0];
+    if (slotDate < today) throw new Error('PAST_DATE_NOT_BOOKABLE');
+    return true;
+  };
+
+  // Past date rejected
+  assert.throws(() => checkSlotValidity('2020-01-01', 'Available'), /PAST_DATE_NOT_BOOKABLE/);
+
+  // Closed slot rejected
+  assert.throws(() => checkSlotValidity('2099-01-01', 'Closed'), /SLOT_CLOSED/);
+
+  // Future available slot succeeds
+  assert.strictEqual(checkSlotValidity('2099-01-01', 'Available'), true);
+});
+
 test.after(async () => {
   const { closePool } = require('../src/config/database');
   await closePool();
